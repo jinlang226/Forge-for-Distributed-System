@@ -9,7 +9,7 @@ abstract sig Decision {}
 one sig NoneDecision, Commit, Abort extends Decision {}
 
 sig Message {
-    None,
+    NoneMessage,
     VoteReqMsg,
     VoteMsg: pfunc Int -> Vote,  
     DecisionMsg: one Decision   
@@ -31,7 +31,7 @@ pred DistributedSystemWF[d: DistributedSystem] {
     #d.Coordinator >= 0
     d.Coordinator.participantCount = #(d.Participant)
     all i: Int | i < #(d.Participant) implies {
-        d.Participant[i].hostId = i //error
+       (d.Participant[i]).hostId = i 
     }
     coordWellformed[d.Coordinator]
 }
@@ -60,21 +60,15 @@ sig CoordinatorHost {
     -- seq: https://alloytools.org/quickguide/seq.html seems not support in forge
 }
 
-// pred CoordNext[v0: CoordinatorHost, v1: CoordinatorHost, msgOps: MessageOps] {
-//     exists step | CoordNextStep[v0, v1, msgOps, step]
-// }
-
-// pred CoordNextStep[v0: CoordinatorHost, v1: CoordinatorHost, msgOps: MessageOps, step: CoordStep] {
-        // todo: match case
-        // error unbound identifier
-//     all s: step | 
-//         (s = coordSendReq implies coordSendReq[v0, v1, msgOps]) and
-//         (s = coordLearnVote implies coordLearnVote[v0, v1, msgOps]) and
-//         (s = coordDecideStep implies coordDecideStep[v0, v1, msgOps, d])
-// }
+pred step {
+    some c: CoordinatorHost | 
+        coordSendReq[p] or
+        coordLearnVote[p] or 
+        coordDecideStep[p]
+}
 
 pred coordWellformed[h: CoordinatorHost] {
-    // h.participantCount = #(h.votes)
+    h.participantCount = #(h.votes)
     all h: CoordinatorHost | let uniqueKeys = { x: Int | some y: Int | x->y in h.votes } |
         #uniqueKeys = h.participantCount
 }
@@ -92,13 +86,13 @@ pred coordInit[v: CoordinatorHost] {
 pred coordSendReq[v0: CoordinatorHost, v1: CoordinatorHost, msgOps: MessageOps] {
     coordWellformed[v0]
     msgOps.send = VoteReqMsg
-    msgOps.recv = None
+    msgOps.recv = NoneMessage
     v0 = v1
 }
 
 pred coordLearnVote[v0: CoordinatorHost, v1: CoordinatorHost, msgOps: MessageOps] {
     coordWellformed[v0]
-    msgOps.send = None
+    msgOps.send = NoneMessage
     -- votes: pfunc Int -> Int //vote seq 
     msgOps.recv = VoteMsg[hostId]
      
@@ -119,7 +113,7 @@ pred coordDecideStep[v0: CoordinatorHost, v1: CoordinatorHost, msgOps: MessageOp
         else Abort
     v1 = v0.(decision = d)
     msgOps.send = DecisionMsg[d]
-    msgOps.recv = None
+    msgOps.recv = NoneMessage
     
 }
 
@@ -131,19 +125,11 @@ sig ParticipantHost {
     decision: one Decision
 }
 
-// pred PtcpNext[v0: CoordinatorHost, v1: CoordinatorHost, msgOps: MessageOps] {
-//     exists step | PtcpNextStep[v0, v1, msgOps, step]
-// }
-
-
-// pred PtcpNextStep[v0: ParticipantHost, v1: ParticipantHost, msgOps: MessageOps, step: PtcpStep] {
-//     // Vote: ptcpVote,
-//     // LearnDecision: ptcpLearnDecision
-//todo: match case
-//     all s: step | 
-//         (s = ptcpVote implies ptcpVote[v0, v1, msgOps]) and
-//         (s = ptcpLearnDecision implies ptcpLearnDecision[v0, v1, msgOps])
-// }
+pred step {
+    some p: ParticipantHost | 
+        ptcpVote[p] or
+        ptcpLearnDecision[p] 
+}
 
 pred ptcpInit[v: ParticipantHost] {
     v.decision = NoneDecision
@@ -162,7 +148,7 @@ pred ptcpVote[v0: ParticipantHost, v1: ParticipantHost, msgOps: MessageOps] {
 }
 
 pred ptcpLearnDecision[v0: ParticipantHost, v1: ParticipantHost, msgOps: MessageOps] {
-    msgOps.send = None
+    msgOps.send = NoneMessage
     // msgOps.recv = DecisionMsg[decision]
     // v1.decision = decision
     some d: DecisionMsg | d in msgOps.recv and v1.decision = d.decision
@@ -171,83 +157,139 @@ pred ptcpLearnDecision[v0: ParticipantHost, v1: ParticipantHost, msgOps: Message
     v0.preference = v1.preference
 }
 
+-- Network
+---------------------------------------------------------------------------------
+sig Network {
+    sentMsg: pfunc Int -> MessageOps
+}
+
+pred NetworkInit[v: Network] {
+    all i: Int | i < #(v.sentMsg) implies {
+        (v.sentMsg[i]).send = NoneMessage 
+        (v.sentMsg[i]).recv = NoneMessage
+    }
+}
+
+pred NetworkNext[v0: Network, v1: Network, msgOps: MessageOps] {
+    (msgOps != NoneMessage) => v1.sentMsg = v0.sentMsg + msgOps and msgOps.recv in v0.sentMsg
+}
+
 -- Two Phase Commit
 ---------------------------------------------------------------------------------
 one sig twoPC {
-    DistributedSystemTraces: pfunc Int -> DistributedSystem
+    DistributedSystemTraces: pfunc Int -> DistributedSystem,
+    // Networks: pfunc Int -> Network
+    //DistributedSystemTraces: pfunc Int -> DistributedSystem -> Network
 }
 
-pred starting[d: DistributedSystem] {
+pred starting[d: DistributedSystem, n: Network] {
     DistributedSystemInit[d]
+    // NetworkInit[n]
 }
+
+/*
+
+-------------------------------------------------------------------------------
+
+-- Reinforce the need for a loop by naming this predicate "lasso", not just "trace"
+pred lasso {
+    init            -- start in the initial state
+    always step     -- in every state, take a forward transition
+}
+
+-- TN: I removed fairness here, because it's not needed under the way
+-- the liveness property is currently phrased (only triggering an obligation 
+-- once a process is *Waiting*), given that both processes are always interested. 
+
+-------------------------------------------------------------------------------
+-- Visualization
+-- Show a valid lasso trace where no process remains disinterested forever.
+-------------------------------------------------------------------------------
+
+run {
+  lasso  
+  all p: Process | eventually World.loc[p] != Disinterested
+}
+*/
 
 pred traces {
     #(twoPC.DistributedSystemTraces) > 0
-    starting[twoPC.DistributedSystemTraces[0]]
-    msgOps = 
-    all i: Int | 0 < i < #(twoPC.DistributedSystemTraces) - 1 implies {
-        DistributedSystemNext[twoPC.DistributedSystemTraces[i], twoPC.DistributedSystemTraces[i + 1], msgOps]
-    }
+    // #(twoPC.Networks) > 0 
+    starting[twoPC.DistributedSystemTraces[0], twoPC.Networks[0]]
+    
     /*
     // init
-    trace[0].Coordinator.coordDecision = NoneDecision
-    trace[0].Coordinator.participantCount = 1
-    trace[0].Coordinator.votes[0] = NoneVote
-    trace[0].Participant[0].hostId = 0
-    trace[0].Participant[0].preference = Yes
-    trace[0].Participant[0].decision = NoneDecision
+    network.sentMsgs:= {}
+    DistributedSystemTraces[0].Coordinator.coordDecision = NoneDecision
+    DistributedSystemTraces[0].Coordinator.participantCount = 1
+    DistributedSystemTraces[0].Coordinator.votes[0] = NoneVote
+    DistributedSystemTraces[0].Participant[0].hostId = 0
+    DistributedSystemTraces[0].Participant[0].preference = Yes
+    DistributedSystemTraces[0].Participant[0].decision = NoneDecision
 
     //send vote req
-    MessageOps(send:= Some(VOTE_REQ), recv:= None)
-    trace[1].Coordinator.coordDecision = NoneDecision
-    trace[1].Coordinator.participantCount = 1
-    trace[1].Coordinator.votes[0] = NoneVote
-    trace[1].Participant[0].hostId = 0
-    trace[1].Participant[0].preference = Yes
-    trace[1].Participant[0].decision = NoneDecision
+    MessageOps(send:= VOTE_REQ, recv:= NoneMessage)
+    network.sentMsgs:= {VOTE_REQ}
+    DistributedSystemTraces[1].Coordinator.coordDecision = NoneDecision
+    DistributedSystemTraces[1].Coordinator.participantCount = 1
+    DistributedSystemTraces[1].Coordinator.votes[0] = NoneVote
+    DistributedSystemTraces[1].Participant[0].hostId = 0
+    DistributedSystemTraces[1].Participant[0].preference = Yes
+    DistributedSystemTraces[1].Participant[0].decision = NoneDecision
 
     //participant reply Vote preference
-    MessageOps(send:= Some(Message.VOTE(Yes, 0)), recv:= Some(VOTE_REQ))
-    trace[2].Coordinator.coordDecision = NoneDecision
-    trace[2].Coordinator.participantCount = 1
-    trace[2].Coordinator.votes[0] = Yes
-    trace[2].Participant[0].hostId = 0
-    trace[2].Participant[0].preference = NoneVote
-    trace[2].Participant[0].decision = NoneDecision
+    network.sentMsgs:= {VoteReqMsg, VoteMsg[0]=Yes}
+    MessageOps(send:= VoteMsg[0]=Yes, recv:= VoteReqMsg))
+    DistributedSystemTraces[2].Coordinator.coordDecision = NoneDecision
+    DistributedSystemTraces[2].Coordinator.participantCount = 1
+    DistributedSystemTraces[2].Coordinator.votes[0] = Yes
+    DistributedSystemTraces[2].Participant[0].hostId = 0
+    DistributedSystemTraces[2].Participant[0].preference = NoneVote
+    DistributedSystemTraces[2].Participant[0].decision = NoneDecision
 
     //host receive votes from participant
-    MessageOps(send:= None, recv:= Some(Message.VOTE(Yes, 0)))
-    trace[3].Coordinator.coordDecision = NoneDecision
-    trace[3].Coordinator.participantCount = 1
-    trace[3].Coordinator.votes[0] = Yes
-    trace[3].Participant[0].hostId = 0
-    trace[3].Participant[0].preference = Yes
-    trace[3].Participant[0].decision = NoneDecision
+    network.sentMsgs:= {VoteReqMsg, VoteMsg[0]=Yes}
+    MessageOps(send:= NoneMessage, recv:= VoteMsg[0]=Yes)
+    DistributedSystemTraces[3].Coordinator.coordDecision = NoneDecision
+    DistributedSystemTraces[3].Coordinator.participantCount = 1
+    DistributedSystemTraces[3].Coordinator.votes[0] = Yes
+    DistributedSystemTraces[3].Participant[0].hostId = 0
+    DistributedSystemTraces[3].Participant[0].preference = Yes
+    DistributedSystemTraces[3].Participant[0].decision = NoneDecision
 
     //host make and send decision
-    MessageOps(send:= Some(Message.DECISION(Commit)), recv:= None); 
-    trace[4].Coordinator.coordDecision = Commit
-    trace[4].Coordinator.participantCount = 1
-    trace[4].Coordinator.votes[0] = Yes
-    trace[4].Participant[0].hostId = 0
-    trace[4].Participant[0].preference = Yes
-    trace[4].Participant[0].decision = NoneDecision
+    network.sentMsgs:= {VoteReqMsg, VoteMsg[0]=Yes, Commit}
+    MessageOps(send:= commit, recv:= NoneMessage); 
+    DistributedSystemTraces[4].Coordinator.coordDecision = Commit
+    DistributedSystemTraces[4].Coordinator.participantCount = 1
+    DistributedSystemTraces[4].Coordinator.votes[0] = Yes
+    DistributedSystemTraces[4].Participant[0].hostId = 0
+    DistributedSystemTraces[4].Participant[0].preference = Yes
+    DistributedSystemTraces[4].Participant[0].decision = NoneDecision
 
     // participant receive decision
-    MessageOps(send:= None, recv:= Some(Message.DECISION(Decision.Commit))
-    trace[5].Coordinator.coordDecision = Commit
-    trace[5].Coordinator.participantCount = 1
-    trace[5].Coordinator.votes[0] = Yes
-    trace[5].Participant[0].hostId = 0
-    trace[5].Participant[0].preference = Yes
-    trace[5].Participant[0].decision = Commit
+    network.sentMsgs:= {VoteReqMsg, VoteMsg[0]=Yes, Commit}
+    MessageOps(send:= NoneMessage, recv:= Commit)
+    DistributedSystemTraces[5].Coordinator.coordDecision = Commit
+    DistributedSystemTraces[5].Coordinator.participantCount = 1
+    DistributedSystemTraces[5].Coordinator.votes[0] = Yes
+    DistributedSystemTraces[5].Participant[0].hostId = 0
+    DistributedSystemTraces[5].Participant[0].preference = Yes
+    DistributedSystemTraces[5].Participant[0].decision = Commit
     */
 
+    // all i: Int | 0 < i < #(twoPC.DistributedSystemTraces) - 1 implies {
+    //     DistributedSystemNext[twoPC.DistributedSystemTraces[i], twoPC.DistributedSystemTraces[i + 1], msgOps]
+    // }
+
+    // all i: Int | 0 < i < #(twoPC.Networks) - 1 implies {
+    //     NetworkNext[twoPC.Networks[i], twoPC.Networks[i + 1], msgOps]
+    // }
 
 
 }
 
 run {
     traces
-} for exactly 20 twoPC, 3 Int for {next is linear}
+} for exactly 20 twoPC, 3 Int for {next is linear} 
 
