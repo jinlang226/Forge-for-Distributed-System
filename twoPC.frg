@@ -1,78 +1,113 @@
 #lang forge
 
+/*
+  Two-phase commit protocol
+
+  (I1) coordinator sends query to all participants and waits until all replied
+  (I2) participants execute the transaction up to commit point (undo, redo logs)
+  (I3) participants reply with Yes or No 
+
+  if coordinator got Yes from all participants,
+  (Y1) 
+  ...
+
+  if coordinator got a No:
+  (N1) 
+  ...
+  
+
+  Not modeling:
+    * timeouts 
+    * ... what else?
+
+*/
+
 -- Message
 ---------------------------------------------------------------------------------
 abstract sig Vote {}
-sig NoneVote, Yes, No extends Vote {}
+-- "one": disallow multiple "Yes" objects in the world, etc.
+--  we can still have multiple _uses_ of the single canonical Yes, etc.
+one sig NoneVote, Yes, No extends Vote {} 
 
 abstract sig Decision {}
-sig NoneDecision, Commit, Abort extends Decision {}
+one sig NoneDecision, Commit, Abort extends Decision {}
 
-sig VoteMsgPair {
-    sender: one Int, 
-    VoteChoice: one Vote
-}
+-- Different types of message used in the protocol; each can have different
+-- fields that reflect its purpose and contents.
+abstract sig Message { }
+sig NoneMessage extends Message {} -- represents a missing message/response
+sig VoteReqMsg extends Message {}  -- step 1 (coordinator sends)
+sig VoteMsg extends Message {      -- step 2 (participant sends)
+    sender: one ParticipantHost, 
+    voteChoice: one Vote
+}    
+sig DecisionMsg extends Message { -- step 3 (coordinator sends) 
+    decision: one Decision
+} 
 
-sig Message {
-    NoneMessage: one Message,
-    VoteReqMsg: one Message,
-    // VoteMsg: pfunc Int -> Vote,  
-    VoteMsg: one VoteMsgPair,  
-    DecisionMsg: one Decision   
-}   
+-- E.g., in first step coordinator will send a VoteReqMsg, but will have received nothing
+// sig MessageOps {
+//     recv: one Message, -- Note option to make this "lone", not have NoneMessage
+//     send: one Message
+// }
 
-sig MessageOps {
-    recv: one Message,
-    send: one Message
-}
-
+-- Steps of the protocol
 abstract sig Steps {}
-one sig coordSendReqStep, coordLearnVoteStep, coordDecideStep, ptcpVoteStep, ptcpLearnDecisionStep extends Steps {}
+one sig CoordSendReqStep, CoordLearnVoteStep, CoordDecideStep, 
+        PtcpVoteStep, PtcpLearnDecisionStep extends Steps {}
 
 -- DistributedSystem
 ---------------------------------------------------------------------------------
+
+-- Represents a state of our distributed system
 sig DistributedSystem {
-   Coordinator: one CoordinatorHost,
-   Participant: pfunc Int -> ParticipantHost
+   coordinator: one CoordinatorHost,
+   participants: set ParticipantHost
 }
 
 pred DistributedSystemWF[d: DistributedSystem] {
-    #d.Coordinator >= 0
-    d.Coordinator.participantCount = #(d.Participant)
-    all i: Int | i < #(d.Participant) implies {
-       (d.Participant[i]).hostId = i 
-    }
-    coordWellformed[d.Coordinator]
+    //#d.coordinator >= 0
+    d.coordinator.participantCount = #(d.participants)
+    // all i: Int | i < #(d.Participant) implies {
+    //    (d.Participant[i]).hostId = i 
+    // }
+    coordWellformed[d.coordinator]
 }
 
+-- Startup state
 pred DistributedSystemInit[d: DistributedSystem] {
-    DistributedSystemWF[d]
-    coordInit[d.Coordinator]
-    all i: Int | i < #(d.Participant) implies {
-        ptcpInit[d.Participant[i]]
+    DistributedSystemWF[d]       -- start in a well-formed state
+    coordInit[d.coordinator]     -- coordinator will be in start state
+    all p: d.participants | {    -- all participants also in start state
+        ptcpInit[p]
     }
 }
 
-pred DistributedSystemNext[d0: DistributedSystem, d1: DistributedSystem, step: Steps, send: Message, recv: Message, hostId: Int, decision: Decision] {
-    DistributedSystemWF[d0]
-    DistributedSystemWF[d1]
+-- transition relation: d0 --(step, send, recv, phost, decision)--> d1
+pred DistributedSystemNext[d0: DistributedSystem, d1: DistributedSystem, 
+                           step: Steps, send: Message, recv: Message, phost: ParticipantHost, 
+                           decision: Decision] {
+    -- beware: this *ENFORCES* that the post-state is well-formed, rather than 
+    --   checking that the protocol maintains well-formedness. 
+    // DistributedSystemWF[d0]
+    // DistributedSystemWF[d1]
 
-    step = coordSendReqStep =>  {
-        coordSendReq[d0.Coordinator, d1.Coordinator, send, recv]
+    step = CoordSendReqStep => {
+        coordSendReq[d0.coordinator, d1.coordinator, send, recv]
     }
     
-    step = coordLearnVoteStep => {
-        coordLearnVote[d0.Coordinator, d1.Coordinator, send, recv]
-    } //error
-    step = coordDecideStep => {
-        coordDecide[d0.Coordinator, d1.Coordinator, send, recv, decision]
-    }
-    step = ptcpVoteStep => {
-        ptcpVote[d0.Participant[hostId], d1.Participant[hostId], send, recv]
-    } 
-    step = ptcpLearnDecisionStep => {
-        ptcpLearnDecision[d0.Participant[hostId], d1.Participant[hostId], send, recv]
-    }
+    // step = coordLearnVoteStep => {
+    //     coordLearnVote[d0.Coordinator, d1.Coordinator, send, recv]
+    // } //error
+    // step = coordDecideStep => {
+    //     coordDecide[d0.Coordinator, d1.Coordinator, send, recv, decision]
+    // }
+    // step = ptcpVoteStep => {
+    //     ptcpVote[d0.Participant[hostId], d1.Participant[hostId], send, recv]
+    // } 
+    // step = ptcpLearnDecisionStep => {
+    //     ptcpLearnDecision[d0.Participant[hostId], d1.Participant[hostId], send, recv]
+    // }
 }
 
 -- CoordinatorHost
@@ -80,8 +115,14 @@ pred DistributedSystemNext[d0: DistributedSystem, d1: DistributedSystem, step: S
 sig CoordinatorHost {
     participantCount: one Int,
     coordDecision: one Decision,
-    votes: pfunc Int -> Vote 
+    -- func: TOTAL function, all participants have a vote in the function (even NoneVote)
+    -- pfunc: PARTIAL function, some participants may have no entry
+    -- NOTE: this choice (func) enforces that there are no unused participants
+    votes: func ParticipantHost -> Vote -- for each participant, what is its vote?
+
     -- seq: https://alloytools.org/quickguide/seq.html seems not support in forge
+    -- TN: the `seq` keyword is unsupported, but you can use a pred with 
+    --    all ch: CoordinatorHost | isSeqOf[ch.votes, Vote]
 }
 
 pred coordWellformed[h: CoordinatorHost] {
@@ -91,101 +132,121 @@ pred coordWellformed[h: CoordinatorHost] {
 }
 
 pred coordInit[v: CoordinatorHost] {
-    coordWellformed[v]
+    -- Note this is also maybe a property to check, rather than a constraint to 
+    -- *enforce*; we already enforce it in the initial state pred anyway.
+    // coordWellformed[v]
+
     // No votes recorded yet
-    #(v.votes) = v.participantCount
     // all v: CoordinatorHost | let uniqueKeys = { x: Int | some y: Int | x->y in v.votes } |
     //     #uniqueKeys = v.participantCount
-    all i: Int | i < #(v.votes) implies i -> NoneVote in v.votes 
+
+    -- This "lookup" is a join that asks for the set of votes for *all* ParticipantHosts
+    v.votes[ParticipantHost] = NoneVote 
     // No decision recorded yet
     v.coordDecision = NoneDecision
 }
 
 pred coordSendReq[v0: CoordinatorHost, v1: CoordinatorHost, send: Message, recv: Message] {
-    coordWellformed[v0]
+    //coordWellformed[v0]
     send = VoteReqMsg
     recv = NoneMessage
     v0 = v1
 }
 
-pred coordLearnVote[v0: CoordinatorHost, v1: CoordinatorHost, send: Message, recv: Message] {
-    coordWellformed[v0]
-    send = NoneMessage
-    -- votes: pfunc Int -> Vote 
-    // recv = VoteMsg[hostId]
-    recv = VoteMsg
+// pred coordLearnVote[v0: CoordinatorHost, v1: CoordinatorHost, send: Message, recv: Message] {
+//     coordWellformed[v0]
+//     send = NoneMessage
+//     -- votes: pfunc Int -> Vote 
+//     // recv = VoteMsg[hostId]
+//     recv = VoteMsg
      
-    VoteMsg.sender < v0.participantCount
-    // v1.votes[hostId] = votePref
-    // all v1:Int - VoteMsgPair.sender | v1.votes[v1] = v0.votes[v1]
-    v1.votes[sender] = VoteMsg.VoteChoice
-    // all i: Int | (sender != i) implies { //error
-    //     v1.votes[i] = v0.votes[i]
-    // }
-    // v1 = v0.(votes = v0.votes[sender = VoteChoice])      
-}
+//     VoteMsg.sender < v0.participantCount
+//     // v1.votes[hostId] = votePref
+//     // all v1:Int - VoteMsgPair.sender | v1.votes[v1] = v0.votes[v1]
+//     v1.votes[sender] = VoteMsg.VoteChoice
+//     // all i: Int | (sender != i) implies { //error
+//     //     v1.votes[i] = v0.votes[i]
+//     // }
+//     // v1 = v0.(votes = v0.votes[sender = VoteChoice])      
+// }
 
-pred coordDecide[v0: CoordinatorHost, v1: CoordinatorHost, send: Message, recv: Message, d: coordDecision] {
-    coordWellformed[v0]
-    all hostId: Int | hostId < v0.participantCount implies {
-        v0.votes[hostId] != NoneVote
-    }
-    // d = 
-    (all hostId: Int | hostId < v0.participantCount implies {
-        v0.votes[hostId] = Commit
-    }) => d = Commit
-    else d = Abort
-    v1.coordDecision = d
-    // v1 = v0.(decision = d)
-    Decision = d
-    send = DecisionMsg
-    recv = NoneMessage
+// pred coordDecide[v0: CoordinatorHost, v1: CoordinatorHost, send: Message, recv: Message, d: coordDecision] {
+//     coordWellformed[v0]
+//     all hostId: Int | hostId < v0.participantCount implies {
+//         v0.votes[hostId] != NoneVote
+//     }
+//     // d = 
+//     (all hostId: Int | hostId < v0.participantCount implies {
+//         v0.votes[hostId] = Commit
+//     }) => d = Commit
+//     else d = Abort
+//     v1.coordDecision = d
+//     // v1 = v0.(decision = d)
+//     Decision = d
+//     send = DecisionMsg
+//     recv = NoneMessage
     
-}
+// }
 
 -- ParticipantHost
 ---------------------------------------------------------------------------------
 sig ParticipantHost {
-    hostId: one Int, 
-    preference: one Vote,   
-    decision: one Decision
+    preference: one Vote,
+    -- Forge won't let you have 2 sigs with the same field name
+    participantDecision: one Decision
 }
 
 pred ptcpInit[v: ParticipantHost] {
-    v.decision = NoneDecision
+    -- v.preference is unconstrained (non-deterministic)
+    v.preference in (Yes + No)
+    v.participantDecision = NoneDecision
 }
 
-pred ptcpVote[v0: ParticipantHost, v1: ParticipantHost, send: Message, recv: Message] {
-    // hostId = v0.hostId
-    VoteMsgPair.sender = v0.hostId
-    VoteMsgPair.VoteChoice = v0.preference
-    // VoteMsg[v0.hostId] = v0.preference
-    send = VoteMsgPair
-    recv = VoteReqMsg
-    v0.hostId = v1.hostId
-    v0.preference = v1.preference
+// pred ptcpVote[v0: ParticipantHost, v1: ParticipantHost, send: Message, recv: Message] {
+//     // hostId = v0.hostId
+//     VoteMsgPair.sender = v0.hostId
+//     VoteMsgPair.VoteChoice = v0.preference
+//     // VoteMsg[v0.hostId] = v0.preference
+//     send = VoteMsgPair
+//     recv = VoteReqMsg
+//     v0.hostId = v1.hostId
+//     v0.preference = v1.preference
     
-    (v0.preference = NoneVote) => v1.decision = NoneDecision
-    else v1.decision = v0.decision
-}
+//     (v0.preference = NoneVote) => v1.decision = NoneDecision
+//     else v1.decision = v0.decision
+// }
 
-pred ptcpLearnDecision[v0: ParticipantHost, v1: ParticipantHost, send: Message, recv: Message] {
-    send = NoneMessage
-    recv = DecisionMsg
-    v1.decision = DecisionMsg.Decision
+// pred ptcpLearnDecision[v0: ParticipantHost, v1: ParticipantHost, send: Message, recv: Message] {
+//     send = NoneMessage
+//     recv = DecisionMsg
+//     v1.decision = DecisionMsg.Decision
 
-    v0.hostId = v1.hostId
-    v0.preference = v1.preference
-}
+//     v0.hostId = v1.hostId
+//     v0.preference = v1.preference
+// }
 
 -- Two Phase Commit
 ---------------------------------------------------------------------------------
-one sig twoPC {
-    DistributedSystemTraces: pfunc Int -> DistributedSystem
-}
 
-pred starting[d: DistributedSystemTraces] {
-    #(d) = 6 
+-- Represents a run of the protocol
+one sig TwoPC {
+    startState: one DistributedSystem, -- IMPORTANT: these are _states_
+    nextState: pfunc DistributedSystem -> DistributedSystem
+}
+-- NOTE: add {nextState is linear} to run
+
+pred successfulRun {
+
+    -- Initial state is really an initial state
+    no ds: DistributedSystem | TwoPC.nextState[ds] = TwoPC.startState
+    DistributedSystemInit[TwoPC.startState]
+    
+    -- "hard coding" the transition. Could instead say that always this pred is used
+    DistributedSystemNext[TwoPC.startState, TwoPC.nextState[TwoPC.startState], 
+                          CoordSendReqStep, VoteReqMsg, NoneMessage, none, NoneDecision]
+
+
+    //#(d) = 6  
     // init
     /*
     (d[0].Coordinator).coordDecision = NoneDecision
@@ -251,8 +312,6 @@ pred starting[d: DistributedSystemTraces] {
     //     0 < i < #(twoPC.d) - 1 implies 
     //     DistributedSystemNext[twoPC.d[i], twoPC.d[i + 1], msgOps] // todo
     // }
-    DistributedSystemInit[d[0]]
-    DistributedSystemNext[d[0], d[1], coordSendReqStep, VoteReqMsg, NoneMessage, -1, NoneDecision]
     
     // VoteMsgPair.sender = 0
     // VoteMsgPair.VoteChoice = Yes
@@ -271,6 +330,8 @@ pred starting[d: DistributedSystemTraces] {
 }
 
 run {
-    starting[twoPC.DistributedSystemTraces]  
-} 
+    successfulRun
+} for {nextState is linear}
+
+-- TN: what are the scopes on the sigs? (default will be 3--4)
 
