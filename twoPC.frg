@@ -60,9 +60,14 @@ one sig CoordSendReqStep, CoordLearnVoteStep, CoordDecideStep,
 ---------------------------------------------------------------------------------
 
 -- Represents a state of our distributed system
-sig DistributedSystem {
-   coordinator: one CoordinatorHost,
+sig DistributedSystemState {
+   coordinator: one CoordinatorHost, -- should be just identities...
    participants: set ParticipantHost
+
+  -- EXAMPLE: ... and all the STATE is in this sig 
+  -- (temporal forge does this differently, and perhaps more conveniently :-))
+   votes: func (CoordinatorHost -> ParticipantHost) -> Vote -- for each participant, what is its vote?
+
 }
 
 pred DistributedSystemWF[d: DistributedSystem] {
@@ -240,7 +245,7 @@ pred successfulRun {
     -- Initial state is really an initial state
     no ds: DistributedSystem | TwoPC.nextState[ds] = TwoPC.startState
     DistributedSystemInit[TwoPC.startState]
-    
+
     -- "hard coding" the transition. Could instead say that always this pred is used
     DistributedSystemNext[TwoPC.startState, TwoPC.nextState[TwoPC.startState], 
                           CoordSendReqStep, VoteReqMsg, NoneMessage, none, NoneDecision]
