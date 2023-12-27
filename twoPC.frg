@@ -62,7 +62,7 @@ one sig CoordSendReqStep, CoordLearnVoteStep, CoordDecideStep,
 -- Represents a state of our distributed system
 sig DistributedSystem {
    coordinator: one CoordinatorHost, -- should be just identities...
-   participants: set ParticipantHost
+   participants: one ParticipantHost
 
   -- EXAMPLE: ... and all the STATE is in this sig 
   -- (temporal forge does this differently, and perhaps more conveniently :-))
@@ -83,15 +83,14 @@ pred DistributedSystemWF[d: DistributedSystem] {
 pred DistributedSystemInit[d: DistributedSystem] {
     DistributedSystemWF[d]       -- start in a well-formed state
     coordInit[d.coordinator]     -- coordinator will be in start state
-    all p: d.participants | {    -- all participants also in start state
-        ptcpInit[p]
-    }
+    ptcpInit[d.participants]     -- participants will be in start state
 }
 
 -- transition relation: d0 --(step, send, recv, phost, decision)--> d1
 pred DistributedSystemNext[d0: DistributedSystem, d1: DistributedSystem, 
-                           step: Steps, send: Message, recv: Message, phost: ParticipantHost, 
-                           decision: Decision] {
+                           step: Steps, send: Message, recv: Message] {
+                            //, phost: ParticipantHost, 
+                        //    decision: Decision
     -- beware: this *ENFORCES* that the post-state is well-formed, rather than 
     --   checking that the protocol maintains well-formedness. 
     // DistributedSystemWF[d0]
@@ -105,7 +104,7 @@ pred DistributedSystemNext[d0: DistributedSystem, d1: DistributedSystem,
         coordLearnVote[d0.coordinator, d1.coordinator, send, recv]
     } //error
 
-    step = CoordDecideStep and (no ptcpHost: ParticipantHost | (d0.coordinator).votes[ptcpHost] = NoneVote) => {
+    step = CoordDecideStep and ((d0.coordinator).votes[ParticipantHost] != NoneVote) => {
         coordDecide[d0.coordinator, d1.coordinator, send, recv]
     }
 
@@ -113,7 +112,7 @@ pred DistributedSystemNext[d0: DistributedSystem, d1: DistributedSystem,
         ptcpVote[d0.participants, d1.participants, send, recv]
     } 
 
-    step = PtcpLearnDecisionStep => {
+    step = PtcpLearnDecisionStep and (DecisionMsg.decision != NoneDecision) => { 
         ptcpLearnDecision[d0.participants, d1.participants, send, recv]
     }
 }
@@ -150,6 +149,7 @@ pred coordInit[v: CoordinatorHost] {
 
     -- This "lookup" is a join that asks for the set of votes for *all* ParticipantHosts
     v.votes[ParticipantHost] = NoneVote 
+    v.participantCount = 1
     // No decision recorded yet
     v.coordDecision = NoneDecision
 }
@@ -168,23 +168,26 @@ pred coordLearnVote[v0: CoordinatorHost, v1: CoordinatorHost, send: Message, rec
     // recv.sender = ParticipantHost
     // recv.voteChoice = Vote
     v1.votes[VoteMsg.sender] = VoteMsg.voteChoice
-    v0.votes[VoteMsg.sender] = NoneVote
+    // v0.votes[VoteMsg.sender] = NoneVote
     v0.coordDecision = NoneDecision
     v1.coordDecision = v0.coordDecision
-    v1.participantCount = v0.participantCount
+    v1.participantCount = 1 // error
+    v0.participantCount = 1
     // votes: func ParticipantHost -> Vote  
     // participantCount: one Int,
     // coordDecision: one Decision,
 }
 
 pred coordDecide[v0: CoordinatorHost, v1: CoordinatorHost, send: Message, recv: Message] {
+    v1.participantCount = 1 // error
+    v0.participantCount = 1
     v0.votes = v1.votes
-    v0.participantCount = v1.participantCount
-    no ptcpHost: ParticipantHost | v0.votes[ptcpHost] = No => v1.coordDecision = Commit
-    some ptcpHost: ParticipantHost | v0.votes[ptcpHost] = No => v1.coordDecision = Abort 
+    // v0.participantCount = v1.participantCount
+    v0.votes[ParticipantHost] = Yes => v1.coordDecision = Commit
+    v0.votes[ParticipantHost] = No => v1.coordDecision = Abort 
     v0.coordDecision = NoneDecision
-    DecisionMsg.decision = v1.coordDecision
 
+    DecisionMsg.decision = v1.coordDecision
     send = DecisionMsg
     recv = NoneMessage
 }
@@ -199,7 +202,8 @@ sig ParticipantHost {
 
 pred ptcpInit[v: ParticipantHost] {
     -- v.preference is unconstrained (non-deterministic)
-    v.preference in (Yes + No)
+    // v.preference in (Yes + No)
+    v.preference = No 
     v.participantDecision = NoneDecision
 }
 
@@ -211,15 +215,20 @@ pred ptcpVote[v0: ParticipantHost, v1: ParticipantHost, send: Message, recv: Mes
     recv = VoteReqMsg
     v0.preference = v1.preference
     v0.participantDecision = NoneDecision
-    v1.participantDecision = v0.participantDecision
+    v1.participantDecision = NoneDecision
 }
 
 pred ptcpLearnDecision[v0: ParticipantHost, v1: ParticipantHost, send: Message, recv: Message] {
-    // send = NoneMessage
-    // recv = DecisionMsg
+    send = NoneMessage
+    recv = DecisionMsg
+    
     // v1.participantDecision = DecisionMsg.decision
-    // v0.participantDecision = NoneDecision
     v0.preference = v1.preference
+    // v0.participantDecision = NoneDecision
+    // v1.participantDecision = Abort 
+    // DecisionMsg.decision = Commit => v1.participantDecision = Commit
+    // DecisionMsg.decision = Abort => v1.participantDecision = Abort 
+    // DecisionMsg.decision = Abort 
 }
 
 -- Two Phase Commit
@@ -244,112 +253,34 @@ pred successfulRun {
     -- "hard coding" the transition. Could instead say that always this pred is used
     // send vote req
     DistributedSystemNext[TwoPC.startState, TwoPC.nextState[TwoPC.startState], 
-                          CoordSendReqStep, VoteReqMsg, NoneMessage, none, NoneDecision]
+                          CoordSendReqStep, VoteReqMsg, NoneMessage]
     
     //participant reply Vote preference
     // sndState = TwoPC.nextState[TwoPC.startState] //question... Is there better way to do this?
     DistributedSystemNext[TwoPC.nextState[TwoPC.startState], TwoPC.nextState[TwoPC.nextState[TwoPC.startState]], 
-                          PtcpVoteStep, VoteMsg, VoteReqMsg, none, NoneDecision]
+                          PtcpVoteStep, VoteMsg, VoteReqMsg]
     
     // //host receive votes from participant
     // // thdState = TwoPC.nextState[sndState]
-    // DistributedSystemNext[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]], TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]], 
-    //                       CoordLearnVoteStep, NoneMessage, VoteMsg, none, NoneDecision]
+    DistributedSystemNext[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]], TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]], 
+                          CoordLearnVoteStep, NoneMessage, VoteMsg]
     // // VoteMsg.sender = TwoPC.nextState[TwoPC.nextState[TwoPC.startState]].Participant
     // // VoteMsg.voteChoice = v0.preference
 
     // //host make and send decision
-    // DistributedSystemNext[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]], TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]]], 
-    //                       CoordDecideStep, DecisionMsg, NoneMessage, none, NoneDecision]
+    DistributedSystemNext[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]], TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]]], 
+                          CoordDecideStep, DecisionMsg, NoneMessage]
 
     // // participant receive decision
-    // DistributedSystemNext[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]]], TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]]]], 
-    //                       PtcpLearnDecisionStep, NoneMessage, DecisionMsg, none, NoneDecision]
+    DistributedSystemNext[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]]], TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.nextState[TwoPC.startState]]]]], 
+                          PtcpLearnDecisionStep, NoneMessage, DecisionMsg]
 
-    //#(d) = 6  
-    // init
-    /*
-    (d[0].Coordinator).coordDecision = NoneDecision
-    (d[0].Coordinator).participantCount = 1
-    (d[0].Coordinator).votes[0] = NoneVote
-    (d[0].Participant[0]).hostId = 0
-    (d[0].Participant[0]).preference = Yes
-    (d[0].Participant[0]).decision = NoneDecision
-
-    //send vote req
-    // MessageOps(send:= Some(VOTE_REQ), recv:= None);
-    // network.sentMsgs:= {VOTE_REQ}
-    (d[1].Coordinator).coordDecision = NoneDecision
-    (d[1].Coordinator).participantCount = 1
-    (d[1].Coordinator).votes[0] = NoneVote
-    (d[1].Participant[0]).hostId = 0
-    (d[1].Participant[0]).preference = Yes
-    (d[1].Participant[0]).decision = NoneDecision
-
-    //participant reply Vote preference
-    // network.sentMsgs:= {VoteReqMsg, VoteMsg[0]=Yes}
-    // MessageOps(send:= VoteMsg[0]=Yes, recv:= VoteReqMsg))
-    (d[2].Coordinator).coordDecision = NoneDecision
-    (d[2].Coordinator).participantCount = 1
-    (d[2].Coordinator).votes[0] = Yes
-    (d[2].Participant[0]).hostId = 0
-    (d[2].Participant[0]).preference = NoneVote
-    (d[2].Participant[0]).decision = NoneDecision
-
-    //host receive votes from participant
-    // network.sentMsgs:= {VoteReqMsg, VoteMsg[0]=Yes}
-    // MessageOps(send:= NoneMessage, recv:= VoteMsg[0]=Yes)
-    (d[3].Coordinator).coordDecision = NoneDecision
-    (d[3].Coordinator).participantCount = 1
-    (d[3].Coordinator).votes[0] = Yes
-    (d[3].Participant[0]).hostId = 0
-    (d[3].Participant[0]).preference = Yes
-    (d[3].Participant[0]).decision = NoneDecision
-
-    //host make and send decision
-    // network.sentMsgs:= {VoteReqMsg, VoteMsg[0]=Yes, Commit}
-    // MessageOps(send:= commit, recv:= NoneMessage); 
-    (d[4].Coordinator).coordDecision = Commit
-    (d[4].Coordinator).participantCount = 1
-    (d[4].Coordinator).votes[0] = Yes
-    (d[4].Participant[0]).hostId = 0
-    (d[4].Participant[0]).preference = Yes
-    (d[4].Participant[0]).decision = NoneDecision
-
-    // participant receive decision
-    // network.sentMsgs:= {VoteReqMsg, VoteMsg[0]=Yes, Commit}
-    // MessageOps(send:= NoneMessage, recv:= Commit)
-    (d[5].Coordinator).coordDecision = Commit
-    (d[5].Coordinator).participantCount = 1
-    (d[5].Coordinator).votes[0] = Yes
-    (d[5].Participant[0]).hostId = 0
-    (d[5].Participant[0]).preference = Yes
-    (d[5].Participant[0]).decision = Commit
-*/
-
-    // DistributedSystemInit[twoPC.d[0]]
-    // all i: Int | {
-    //     0 < i < #(twoPC.d) - 1 implies 
-    //     DistributedSystemNext[twoPC.d[i], twoPC.d[i + 1], msgOps] // todo
-    // }
-    
-    // VoteMsgPair.sender = 0
-    // VoteMsgPair.VoteChoice = Yes
-    // DistributedSystemNext[d[1], d[2], ptcpVoteStep, VoteMsgPair, VoteReqMsg, 0, NoneDecision]
-
-    // all row, col: Int | {
-    //     (row < 0 or row > 2 or col < 0 or col > 2) implies
-    //     no b.board[row][col]
-    // }
-
-    // all i: Int | 0 < i < #(twoPC.Networks) - 1 implies {
-    //     NetworkNext[twoPC.Networks[i], twoPC.Networks[i + 1], msgOps]
-    // }
 }
 
 run {
     successfulRun
-} for {nextState is linear}
+} for exactly 6 DistributedSystem for {nextState is linear}
+// for exactly 10 Board, 3 Int for {next is linear}
 
 -- TN: what are the scopes on the sigs? (default will be 3--4)
 
