@@ -233,17 +233,22 @@ one sig TwoPC {
 -- NOTE: add {nextState is linear} to run
 
 pred successfulRun {
+    -- You can give shorter names to expressions via "let". One "let" per value:
+    let s0 = TwoPC.startState |
+    let s1 = TwoPC.nextState[s0] | 
+    let s2 = TwoPC.nextState[s1] | {
+        -- ... TN added s0 and s1 below as an example, but didn't add s2 or later.
 
     -- Initial state is really an initial state
-    no ds: DistributedSystem | TwoPC.nextState[ds] = TwoPC.startState
-    DistributedSystemInit[TwoPC.startState]
+    no ds: DistributedSystem | TwoPC.nextState[ds] = s0
+    DistributedSystemInit[s0]
 
     //pred DistributedSystemNext[d0: DistributedSystem, d1: DistributedSystem, 
                         //    step: Steps, send: Message, recv: Message, phost: ParticipantHost, 
                         //    decision: Decision]
     -- "hard coding" the transition. Could instead say that always this pred is used
     // send vote req
-    DistributedSystemNext[TwoPC.startState, TwoPC.nextState[TwoPC.startState], 
+    DistributedSystemNext[s0, s1, 
                           CoordSendReqStep, VoteReqMsg, NoneMessage, none, NoneDecision]
     
     //participant reply Vote preference
@@ -345,11 +350,12 @@ pred successfulRun {
     // all i: Int | 0 < i < #(twoPC.Networks) - 1 implies {
     //     NetworkNext[twoPC.Networks[i], twoPC.Networks[i + 1], msgOps]
     // }
+    }
 }
 
 run {
     successfulRun
-} for {nextState is linear}
+} for 6 DistributedSystem for {nextState is linear} 
 
 -- TN: what are the scopes on the sigs? (default will be 3--4)
 
