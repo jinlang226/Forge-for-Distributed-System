@@ -104,6 +104,7 @@ pred coordInit[v: CoordinatorHost] {
     v.coordDecision = NoneDecision
 }
 
+// STEP 1
 pred coordSendReq[v: CoordinatorHost, send: Message, recv: Message] {
     send = VoteReqMsg
     recv = NoneMessage
@@ -114,14 +115,22 @@ pred coordSendReq[v: CoordinatorHost, send: Message, recv: Message] {
     all ph: ParticipantHost | v.votes[ph] = NoneVote -- GUARD
     -- How will the participants learn of the request? We need to change their state, too. 
     -- (Let's assume they just receive the message.)
-    all ph: ParticipantHost | ph.lastReceivedRequestFrom' = v
+    all ph: ParticipantHost | ph.lastReceivedRequestFrom' = v -- ACTION
+    all ph: ParticipantHost | ph.participantDecision' = ph.participantDecision -- FRAME
+
+    frameNoCoordinatorChange
+    //v.lastReceivedRequestFrom' = v.lastReceivedRequestFrom -- FRAME
+    //frameNoOtherParticipantChange[v] -- FRAME
+
 }
 
+-- STEP 3
 pred coordLearnVote[v: CoordinatorHost, send: Message, recv: Message] {
     v.coordDecision = NoneDecision -- GUARD
     send = NoneMessage -- GUARD
     recv = VoteMsg -- GUARD
     v.votes[VoteMsg.sender] = NoneVote -- GUARD
+    
     // recv.sender = ParticipantHost
     // recv.voteChoice = Vote
 
@@ -168,23 +177,48 @@ pred ptcpInit[v: ParticipantHost] {
 }
 
 // JW: should v be distributed system?
-// pred ptcpVote[v: ParticipantHost, send: Message, recv: Message] {
-//     // hostId = v0.hostId
+// STEP 2
+pred ptcpVote[v: ParticipantHost, send: Message, recv: Message] {
+    // hostId = v0.hostId
 
-//     send = VoteMsg
-//     recv = VoteReqMsg
-//     v.participantDecision = NoneDecision
+    send = VoteMsg -- GUARD
+    recv = VoteReqMsg -- GUARD
+    v.participantDecision = NoneDecision -- GUARD
+    v.lastReceivedRequestFrom = CoordinatorHost -- received a request
 
-// -- TODO
-       // JW -- Question: Do we need coordinatorHost here for lastReceivedRequestFrom? 
-       // JW -- Or we could put a ReqestSender field in VoteReqMsg
-//     VoteMsg.sender = v
-//     VoteMsg.voteChoice = v.preference
+-- TODO
+--       JW -- Question: Do we need coordinatorHost here for lastReceivedRequestFrom? 
+--       JW -- Or we could put a ReqestSender field in VoteReqMsg
+    VoteMsg.sender = v
+    VoteMsg.voteChoice = v.preference
+
     
-//     v.preference' = v.preference 
-//     v.participantDecision' = v.participantDecision
-//     v.lastReceivedRequestFrom' = v.lastReceivedRequestFrom //JW
-// }
+    -- not var, so don't need a frame
+    --v.preference' = v.preference 
+
+    -- abstract out network for now; direct change to CoordinatorHost
+    --frameNoCoordinatorChange
+    (CoordinatorHost.votes[v])' = v.preference -- ACTION (direct, no network)
+    CoordinatorHost.coordDecision' = CoordinatorHost.coordDecision -- FRAME
+    v.participantDecision' = v.participantDecision -- FRAME
+    v.lastReceivedRequestFrom' = v.lastReceivedRequestFrom -- FRAME
+    frameNoOtherParticipantChange[v] -- FRAME
+}
+
+--------------------------------------------
+-- Framing helpers
+-- NOTE WELL: if we add additional `var` fields, we need to add them here.
+pred frameNoCoordinatorChange {
+    CoordinatorHost.coordDecision' = CoordinatorHost.coordDecision
+    CoordinatorHost.votes' = CoordinatorHost.votes 
+}
+pred frameNoOtherParticipantChange[ph: ParticipantHost] {
+    all v: ParticipantHost-ph | {
+        v.participantDecision' = v.participantDecision 
+        v.lastReceivedRequestFrom' = v.lastReceivedRequestFrom 
+    }
+}
+--------------------------------------------
 
 // pred ptcpLearnDecision[v: ParticipantHost, send: Message, recv: Message] {
 //     // send = NoneMessage
@@ -201,6 +235,7 @@ pred ptcpInit[v: ParticipantHost] {
 -- This transition causes the system to "stutter", allowing us to see traces that exhibit 
 -- deadlocks, etc. The key is that we frame _every var field_ to remain the same.
 pred doNothing {
+    -- not t1_enabled and not t2_enabled and ...
     all ch: CoordinatorHost | {
         ch.coordDecision' = ch.coordDecision
         ch.votes' = ch.votes
@@ -222,8 +257,11 @@ run {
             -- NOTE: Beware; don't use the steps in the transition functions as guards / update them, 
             -- otherwise the distributed system becomes extremely well-behaved 
             {step = CoordSendReqStep and coordSendReq[DistributedSystem.coordinator, send, recv]}
-            or
-            {step = CoordLearnVoteStep and coordLearnVote[DistributedSystem.coordinator, send, recv]}
+            or 
+            {step = PtcpVoteStep and {some ph: DistributedSystem.participants | 
+              {ptcpVote[ph, send, recv]}}}
+            //or
+            //{step = CoordLearnVoteStep and coordLearnVote[DistributedSystem.coordinator, send, recv]}
             // or 
             // {doNothing}
             // or 
@@ -240,7 +278,15 @@ run {
 
     -- Narrow scope of traces; we want to see something interesting!
     -- Note: I don't quite understand what the recv field is for?
-    eventually coordSendReq[DistributedSystem.coordinator, VoteReqMsg, NoneMessage]
+    -- Start state: step 1 
+    coordSendReq[DistributedSystem.coordinator, VoteReqMsg, NoneMessage] 
+    
+    -- 2nd state: step 2  (next_state in Forge ~= LTL X ~= Alloy 6 after)
+    next_state {some ph: DistributedSystem.participants, send, recv: Message | 
+                  ptcpVote[ph, send, recv]}
+    
+    -- Make sure we didn't break something!
+    #ParticipantHost > 1
 } 
 -- We no longer need the "is linear"
 
