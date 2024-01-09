@@ -167,6 +167,7 @@ pred ptcpInit[v: ParticipantHost] {
     no v.lastReceivedRequestFrom
 }
 
+// JW: should v be distributed system?
 // pred ptcpVote[v: ParticipantHost, send: Message, recv: Message] {
 //     // hostId = v0.hostId
 
@@ -175,19 +176,23 @@ pred ptcpInit[v: ParticipantHost] {
 //     v.participantDecision = NoneDecision
 
 // -- TODO
+       // JW -- Question: Do we need coordinatorHost here for lastReceivedRequestFrom? 
+       // JW -- Or we could put a ReqestSender field in VoteReqMsg
 //     VoteMsg.sender = v
 //     VoteMsg.voteChoice = v.preference
     
 //     v.preference' = v.preference 
 //     v.participantDecision' = v.participantDecision
+//     v.lastReceivedRequestFrom' = v.lastReceivedRequestFrom //JW
 // }
 
 // pred ptcpLearnDecision[v: ParticipantHost, send: Message, recv: Message] {
 //     // send = NoneMessage
 //     // recv = DecisionMsg
 //     // v1.participantDecision = DecisionMsg.decision
-//     // v0.participantDecision = NoneDecision
+//     // v0.participantDecision = NoneDecision //JW: recv.desision
 //     v.preference' = v.preference
+//     v.lastReceivedRequestFrom' = v.lastReceivedRequestFrom  //JW
 // }
 
 -- Two Phase Commit
