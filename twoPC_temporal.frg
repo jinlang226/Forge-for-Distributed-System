@@ -140,7 +140,7 @@ pred coordDecide[v: CoordinatorHost] {
     
     -- Beware associativity here; let's add parentheses to be sure. We'll also use if/else.
     (no ptcpHost: ParticipantHost | v.votes[ptcpHost] = No) 
-        =>   (v.coordDecision)' = Commit
+        =>   (v.coordDecision)' = Commit 
         else (v.coordDecision)' = Abort 
     
     -- Not sure what to do with this.
@@ -150,7 +150,7 @@ pred coordDecide[v: CoordinatorHost] {
     v.votes' = v.votes -- EFFECT (FRAME)
     all ph: ParticipantHost | ph.lastReceivedRequestFrom' = ph.lastReceivedRequestFrom -- ACTION
     all ph: ParticipantHost | ph.participantDecision' = ph.participantDecision -- FRAME
-    // all ph: ParticipantHost | ph.participantDecision' = (v.coordDecision)'-- jw: also UNSAT
+    // all ph: ParticipantHost | ph.participantDecision' = (v.coordDecision)'-- jw: this will trigger UNSAT
     // frameNoOtherParticipantChange[v]
 }
 
@@ -211,14 +211,21 @@ pred frameNoOtherParticipantChange[ph: ParticipantHost] {
 --------------------------------------------
 
 pred ptcpLearnDecision[v: ParticipantHost] {
-    v.preference' = v.preference
+    // v.preference' = v.preference
+    v.lastReceivedRequestFrom = CoordinatorHost 
+    v.participantDecision = NoneDecision 
     (v.lastReceivedRequestFrom)' = v.lastReceivedRequestFrom  
-    v.participantDecision = NoneDecision
+    
+    
+    CoordinatorHost.coordDecision' = CoordinatorHost.coordDecision
+    CoordinatorHost.votes' = CoordinatorHost.votes 
+
     // jw: this line will trigger UNSAT, I don't know why
     // is there any good way to debug the UNSAT?
     // (v.participantDecision)' = CoordinatorHost.coordDecision 
-    frameNoCoordinatorChange
-    frameNoOtherParticipantChange[v]
+
+    // frameNoCoordinatorChange 
+    // frameNoOtherParticipantChange[v]
 }
 
 -- Two Phase Commit
@@ -259,7 +266,8 @@ run {
              coordDecide[DistributedSystem.coordinator]}
             or
             {step = PtcpLearnDecisionStep and 
-                {some ph: DistributedSystem.participants | {ptcpLearnDecision[ph]}} and
+                {some ph: DistributedSystem.participants | {ptcpLearnDecision[ph]}} 
+                and
                 CoordinatorHost.coordDecision in (Abort + Commit) 
             } 
     
