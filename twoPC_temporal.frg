@@ -150,7 +150,7 @@ pred coordDecide[v: CoordinatorHost] {
     v.votes' = v.votes -- EFFECT (FRAME)
     all ph: ParticipantHost | ph.lastReceivedRequestFrom' = ph.lastReceivedRequestFrom -- ACTION
     all ph: ParticipantHost | ph.participantDecision' = ph.participantDecision -- FRAME
-    // all ph: ParticipantHost | ph.participantDecision' = (v.coordDecision)'-- jw: this will trigger UNSAT
+    // all ph: ParticipantHost | ph.participantDecision' = (v.coordDecision)'
     // frameNoOtherParticipantChange[v]
 }
 
@@ -220,8 +220,6 @@ pred ptcpLearnDecision[v: ParticipantHost] {
     CoordinatorHost.coordDecision' = CoordinatorHost.coordDecision
     CoordinatorHost.votes' = CoordinatorHost.votes 
 
-    // jw: this line will trigger UNSAT
-    // is there any good way to debug and understand the UNSAT core?
     (v.participantDecision)' = CoordinatorHost.coordDecision 
 
     // frameNoCoordinatorChange 
@@ -246,7 +244,7 @@ pred doNothing {
     -- TODO: did I miss anything?
 
 }
-
+option max_tracelength 10
 run {
     -- Start in an initial state (there's only one DistributedSystem, so we can use the type name safely)
     DistributedSystemInit[DistributedSystem]
@@ -293,6 +291,8 @@ run {
     -- 4th state: step 4
     next_state next_state next_state  {coordDecide[DistributedSystem.coordinator]}
     next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
+    next_state next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
+
     // next_state next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
 
     -- Make sure we didn't break something!
