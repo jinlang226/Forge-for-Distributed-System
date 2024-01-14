@@ -283,6 +283,7 @@ run {
     next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
     
     //jw: is there a way to write a for loop for all participants? 
+    // (avoid writing next_state several times)
     next_state next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
     
     //combine coordLearnVote and ptcpVote step. do not need this
