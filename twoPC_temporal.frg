@@ -220,9 +220,9 @@ pred ptcpLearnDecision[v: ParticipantHost] {
     CoordinatorHost.coordDecision' = CoordinatorHost.coordDecision
     CoordinatorHost.votes' = CoordinatorHost.votes 
 
-    // jw: this line will trigger UNSAT, I don't know why
-    // is there any good way to debug the UNSAT?
-    // (v.participantDecision)' = CoordinatorHost.coordDecision 
+    // jw: this line will trigger UNSAT
+    // is there any good way to debug and understand the UNSAT core?
+    (v.participantDecision)' = CoordinatorHost.coordDecision 
 
     // frameNoCoordinatorChange 
     // frameNoOtherParticipantChange[v]
