@@ -223,7 +223,7 @@ pred ptcpLearnDecision[v: ParticipantHost] {
     (v.participantDecision)' = CoordinatorHost.coordDecision 
 
     // frameNoCoordinatorChange 
-    // frameNoOtherParticipantChange[v]
+    frameNoOtherParticipantChange[v]
 }
 
 -- Two Phase Commit
@@ -276,25 +276,13 @@ run {
     -- Note: I don't quite understand what the recv field is for?
     -- Start state: step 1 
     coordSendReq[DistributedSystem.coordinator] 
-    
     -- 2nd state: step 2  (next_state in Forge ~= LTL X ~= Alloy 6 after)
     next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
-    
-    //jw: is there a way to write a for loop for all participants? 
-    // (avoid writing next_state several times)
     next_state next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
-    
-    //combine coordLearnVote and ptcpVote step. do not need this
-    -- 3rd state: step 3
-    // next_state  next_state {coordLearnVote[DistributedSystem.coordinator, NoneMessage, VoteMsg]}
-
     -- 4th state: step 4
     next_state next_state next_state  {coordDecide[DistributedSystem.coordinator]}
     next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
     next_state next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
-
-    // next_state next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
-
     -- Make sure we didn't break something!
     #ParticipantHost > 1
 } 
