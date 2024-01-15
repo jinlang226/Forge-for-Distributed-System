@@ -142,15 +142,12 @@ pred coordDecide[v: CoordinatorHost] {
     (no ptcpHost: ParticipantHost | v.votes[ptcpHost] = No) 
         =>   (v.coordDecision)' = Commit 
         else (v.coordDecision)' = Abort 
-    
-    -- Not sure what to do with this.
-    --DecisionMsg.decision = v1.coordDecision
 
     v.participantCount' = v.participantCount -- EFFECT (FRAME)
     v.votes' = v.votes -- EFFECT (FRAME)
     all ph: ParticipantHost | ph.lastReceivedRequestFrom' = ph.lastReceivedRequestFrom -- ACTION
     all ph: ParticipantHost | ph.participantDecision' = ph.participantDecision -- FRAME
-    // all ph: ParticipantHost | ph.participantDecision' = (v.coordDecision)'
+    // all ph: ParticipantHost | ph.participantDecision' = (v.coordDecision)' //this works
     // frameNoOtherParticipantChange[v]
 }
 
@@ -211,18 +208,13 @@ pred frameNoOtherParticipantChange[ph: ParticipantHost] {
 --------------------------------------------
 
 pred ptcpLearnDecision[v: ParticipantHost] {
-    // v.preference' = v.preference
     v.lastReceivedRequestFrom = CoordinatorHost 
     v.participantDecision = NoneDecision 
+    (v.participantDecision)' = CoordinatorHost.coordDecision
     (v.lastReceivedRequestFrom)' = v.lastReceivedRequestFrom  
     
-    
-    CoordinatorHost.coordDecision' = CoordinatorHost.coordDecision
-    CoordinatorHost.votes' = CoordinatorHost.votes 
-
-    (v.participantDecision)' = CoordinatorHost.coordDecision 
-
-    // frameNoCoordinatorChange 
+    CoordinatorHost.coordDecision in (Abort + Commit)
+    frameNoCoordinatorChange 
     frameNoOtherParticipantChange[v]
 }
 
@@ -259,14 +251,20 @@ run {
             or 
             {doNothing}
             or 
-            {step = CoordDecideStep and 
-             (no ptcpHost: ParticipantHost | (DistributedSystem.coordinator).votes[ptcpHost] = NoneVote) and
-             coordDecide[DistributedSystem.coordinator]}
-            or
-            {step = PtcpLearnDecisionStep and 
-                {some ph: DistributedSystem.participants | {ptcpLearnDecision[ph]}} 
+            {
+                step = CoordDecideStep 
+                and 
+                (no ptcpHost: ParticipantHost | (DistributedSystem.coordinator).votes[ptcpHost] = NoneVote) 
                 and
-                CoordinatorHost.coordDecision in (Abort + Commit) 
+                coordDecide[DistributedSystem.coordinator]
+            }
+            or
+            {   
+                step = PtcpLearnDecisionStep 
+                // and 
+                // (DistributedSystem.coordinator).coordDecision in (Abort + Commit)
+                and
+                {some ph: DistributedSystem.participants | {ptcpLearnDecision[ph]}} 
             } 
     
         } 
@@ -275,16 +273,25 @@ run {
     -- Narrow scope of traces; we want to see something interesting!
     -- Note: I don't quite understand what the recv field is for?
     -- Start state: step 1 
-    coordSendReq[DistributedSystem.coordinator] 
+    // coordSendReq[DistributedSystem.coordinator] 
     -- 2nd state: step 2  (next_state in Forge ~= LTL X ~= Alloy 6 after)
-    next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
-    next_state next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
-    -- 4th state: step 4
-    next_state next_state next_state  {coordDecide[DistributedSystem.coordinator]}
-    next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
-    next_state next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
+    // next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
+    // next_state next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
+    // -- 4th state: step 4
+    // next_state next_state next_state  {coordDecide[DistributedSystem.coordinator]}
+    // next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
+    // next_state next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
+
+
+    eventually coordSendReq[DistributedSystem.coordinator] 
+    eventually {some ph: DistributedSystem.participants | ptcpVote[ph]}
+    // eventually {some ph: DistributedSystem.participants | ptcpVote[ph]}
+    eventually  {coordDecide[DistributedSystem.coordinator]}
+    eventually {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
+    eventually {all ph: DistributedSystem.participants | ph.participantDecision in (Abort + Commit)} 
+    // eventually {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
     -- Make sure we didn't break something!
-    #ParticipantHost > 1
+    # ParticipantHost > 1 
 } 
 -- We no longer need the "is linear"
 
