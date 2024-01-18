@@ -233,8 +233,6 @@ pred doNothing {
         ph.participantDecision' = ph.participantDecision
         ph.lastReceivedRequestFrom' = ph.lastReceivedRequestFrom
     }
-    -- TODO: did I miss anything?
-
 }
 
 
@@ -300,28 +298,38 @@ pred coordinatorDecisionReflectsPreferences[d: DistributedSystem] {
     }
 }
 
-pred inv[d: DistributedSystem] {
+pred invariant[d: DistributedSystem] {
     safty[d] and coordinatorDecisionReflectsPreferences[d]
 }
 
 option max_tracelength 10
 test expect {
-    initStep: {
-        // FILL: what describes the check that init states must satisfy the invariant?
+    initStep: { //jw: is each step executed separately?
         some step: Steps | { 
             DistributedSystemInit[DistributedSystem]
-            not inv[DistributedSystem]
-            // step = CoordSendReqStep and coordSendReq[DistributedSystem.coordinator]
+            not invariant[DistributedSystem]
         }
     } 
     is unsat
 
 
     inductiveStep: {
+        // jw: is it correct to put `DistributedSystemInit` here?
         DistributedSystemInit[DistributedSystem]
         some step: Steps | {
+            // jw: I only put one step here, should I put all steps here?
+            // or should I put each step in a separate test?
             step = CoordSendReqStep and coordSendReq[DistributedSystem.coordinator]
-            inv[DistributedSystem] 
+            
+            // jw: the visualization will pop up for `invariant[DistributedSystem]`
+            // I checked the visualization, and it looks like the expected output.
+            // is the visualization giving a counter example of unsat, which is -- sat?
+            // invariant[DistributedSystem] 
+
+
+            // jw: whereas there is no visualization pops up for `not invariant[DistributedSystem]`
+            // is this because there is no counter example for this? 
+            not invariant[DistributedSystem] 
         }
     } 
     is unsat
