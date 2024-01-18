@@ -236,6 +236,98 @@ pred doNothing {
     -- TODO: did I miss anything?
 
 }
+
+
+// 2PC should satisfy the Atomic Commit specification:
+
+// AC-1: All processes that reach a decision reach the same one.
+// forall h1, h2 | ValidParticipantId(v, h1) && ValidParticipantId(v, h2) ::
+//   ParticipantVars(v, h1).decision.Some? && ParticipantVars(v, h2).decision.Some? ==>
+//     ParticipantVars(v, h1).decision.value == ParticipantVars(v, h2).decision.value
+pred ac1[d: DistributedSystem] {
+    all h1, h2: d.participants | {
+        h1.participantDecision != NoneDecision and h2.participantDecision != NoneDecision
+    } => {
+        h1.participantDecision = h2.participantDecision
+    }
+}
+
+// AC-3: If any host has a No preference, then the decision must be Abort.
+// Any host with a No preference forces an abort.
+// (exists hostid:HostId ::
+//    && ValidParticipantId(v, hostid)
+//    && ParticipantVars(v, hostid).c.preference.No?)
+// ==> forall h:HostId | ValidParticipantId(v, h) && ParticipantVars(v, h).decision.Some? ::
+//     ParticipantVars(v, h).decision.value == Abort
+pred ac3[d: DistributedSystem] {
+    some h: d.participants | h.preference = No
+    => {
+        all h1: d.participants | {
+            h1.participantDecision != NoneDecision 
+        } => {
+            h1.participantDecision = Abort
+        }
+    }
+}
+
+// AC-4: If all processes prefer Yes, then the decision must be Commit.
+// If every host has a Yes preference we must commit.
+// (forall hostid:HostId | ValidParticipantId(v, hostid) ::
+//    ParticipantVars(v, hostid).c.preference.Yes?)
+// => forall h:HostId | ValidParticipantId(v, h) && ParticipantVars(v, h).decision.Some? ::
+//     ParticipantVars(v, h).decision.value == Commit
+pred ac4[d: DistributedSystem] {
+    all h: d.participants | h.preference = Yes
+    => {
+        all h1: d.participants | {
+            h1.participantDecision != NoneDecision 
+        } => {
+            h1.participantDecision = Commit
+        }
+    }
+}
+
+pred safty[d: DistributedSystem] {
+    ac1[d] and ac3[d] and ac4[d]
+}
+
+pred coordinatorDecisionReflectsPreferences[d: DistributedSystem] {
+    d.coordinator.coordDecision != NoneDecision
+    => {
+        (no ptcpHost: d.participants | ptcpHost.preference = No) 
+            =>   (d.coordinator).coordDecision = Commit 
+            else (d.coordinator).coordDecision = Abort 
+    }
+}
+
+pred inv[d: DistributedSystem] {
+    safty[d] and coordinatorDecisionReflectsPreferences[d]
+}
+
+option max_tracelength 10
+test expect {
+    initStep: {
+        // FILL: what describes the check that init states must satisfy the invariant?
+        some step: Steps | { 
+            DistributedSystemInit[DistributedSystem]
+            not inv[DistributedSystem]
+            // step = CoordSendReqStep and coordSendReq[DistributedSystem.coordinator]
+        }
+    } 
+    is unsat
+
+
+    inductiveStep: {
+        DistributedSystemInit[DistributedSystem]
+        some step: Steps | {
+            step = CoordSendReqStep and coordSendReq[DistributedSystem.coordinator]
+            inv[DistributedSystem] 
+        }
+    } 
+    is unsat
+}
+
+/*
 option max_tracelength 10
 run {
     -- Start in an initial state (there's only one DistributedSystem, so we can use the type name safely)
@@ -295,3 +387,4 @@ run {
 } 
 -- We no longer need the "is linear"
 
+*/
