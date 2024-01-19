@@ -302,37 +302,68 @@ pred invariant[d: DistributedSystem] {
     safty[d] and coordinatorDecisionReflectsPreferences[d]
 }
 
-option max_tracelength 10
+pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
+    coordSendReq[d.coordinator] or
+    coordDecide[d.coordinator] or
+    ptcpVote[ph] or
+    ptcpLearnDecision[ph] 
+    or
+    doNothing
+}
+
+option max_tracelength 2
 test expect {
     initStep: { //jw: is each step executed separately?
-        some step: Steps | { 
-            DistributedSystemInit[DistributedSystem]
-            not invariant[DistributedSystem]
-        }
+        DistributedSystemInit[DistributedSystem]
+        not invariant[DistributedSystem]
     } 
     is unsat
 
 
     inductiveStep: {
-        // jw: is it correct to put `DistributedSystemInit` here?
-        DistributedSystemInit[DistributedSystem]
-        some step: Steps | {
-            // jw: I only put one step here, should I put all steps here?
-            // or should I put each step in a separate test?
-            step = CoordSendReqStep and coordSendReq[DistributedSystem.coordinator]
-            
-            // jw: the visualization will pop up for `invariant[DistributedSystem]`
-            // I checked the visualization, and it looks like the expected output.
-            // is the visualization giving a counter example of unsat, which is -- sat?
-            // invariant[DistributedSystem] 
-
-
-            // jw: whereas there is no visualization pops up for `not invariant[DistributedSystem]`
-            // is this because there is no counter example for this? 
-            not invariant[DistributedSystem] 
+        DistributedSystemWF[DistributedSystem] //jw: not enough. The counterexample may display two or more coordinators or negative participant number
+        // DistributedSystemInit[DistributedSystem] 
+        some ph: DistributedSystem.participants | { 
+            anyTransition[DistributedSystem, ph] //jw: why can we verify any transition here, given every transition is dependent on the previous state?
         }
+        // invariant[DistributedSystem] //this line will generate counter example
+        not invariant[DistributedSystem] //will not generate counter example 
     } 
     is unsat
+
+    // - current state satisfies the invariant
+    currStateSat: {
+        DistributedSystemInit[DistributedSystem]
+        coordSendReq[DistributedSystem.coordinator]
+        invariant[DistributedSystem] 
+    }
+    is sat 
+
+    // - the expected transition occurs
+    expectedState: {
+        DistributedSystemInit[DistributedSystem]
+        coordSendReq[DistributedSystem.coordinator]
+        next_state {some ph: DistributedSystem.participants | ptcpVote[ph]} 
+    }
+    is sat
+
+    //  - next_state does not satisfy the invariant
+    nextState: {
+        DistributedSystemInit[DistributedSystem]
+        coordSendReq[DistributedSystem.coordinator]
+        next_state {some ph: DistributedSystem.participants | ptcpVote[ph]} 
+        not invariant[DistributedSystem]
+    }
+    is unsat
+
+
+    // - next_state always (no-op transition)
+    nextStateAlways: {
+        DistributedSystemInit[DistributedSystem]
+        coordSendReq[DistributedSystem.coordinator]
+        next_state always doNothing
+    }
+    is sat
 }
 
 /*
