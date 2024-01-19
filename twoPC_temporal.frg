@@ -331,6 +331,7 @@ test expect {
     } 
     is unsat
 
+    //jw: I followed your suggested steps below, but I am not sure that I got what you meant. 
     // - current state satisfies the invariant
     currStateSat: {
         DistributedSystemInit[DistributedSystem]
