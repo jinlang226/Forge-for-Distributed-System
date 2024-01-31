@@ -264,6 +264,8 @@ pred ac3[d: DistributedSystem] {
             h1.participantDecision != NoneDecision 
         } => {
             h1.participantDecision = Abort
+            and
+            (d.coordinator).coordDecision = Abort
         }
     }
 }
@@ -280,7 +282,8 @@ pred ac4[d: DistributedSystem] {
         all h1: d.participants | {
             h1.participantDecision != NoneDecision 
         } => {
-            h1.participantDecision = Commit
+            h1.participantDecision = Commit and
+            (d.coordinator).coordDecision = Commit
         }
     }
 }
@@ -288,7 +291,8 @@ pred ac4[d: DistributedSystem] {
 pred safty[d: DistributedSystem] {
     ac1[d] 
     and 
-    ac3[d] and 
+    ac3[d] 
+    and 
     ac4[d]
 }
 
@@ -304,12 +308,22 @@ pred coordinatorDecisionReflectsPreferences[d: DistributedSystem] {
 
 pred invariant[d: DistributedSystem] {
     safty[d] and 
-    coordinatorDecisionReflectsPreferences[d] 
+    coordinatorDecisionReflectsPreferences[d] and
+    (all h1: d.participants | 
+    ((d.coordinator).votes[h1] = h1.preference)) and
+    (all h1: d.participants |
+        ((d.participants).preference = Yes) 
+        =>  (d.coordinator).coordDecision = Commit
+        else (d.coordinator).coordDecision = Abort) and
+    (all h1: d.participants |
+        ((d.participants).preference = Yes) 
+        =>  (d.participants).participantDecision = Commit
+        else (d.participants).participantDecision = Abort)
     
     all h1: d.participants | {
         h1.preference in (Yes + No) 
     } 
-
+        
 }
 
 pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
@@ -323,7 +337,7 @@ pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
 
 option max_tracelength 2
 test expect {
-    // initStep: { //jw: is each step executed separately?
+    // initStep: { 
     //     DistributedSystemInit[DistributedSystem]
     //     not invariant[DistributedSystem]
     // } 
@@ -342,7 +356,15 @@ test expect {
     is unsat
 
 
-    //init and always next and eventually not safe
+    // init and always next and eventually not safe
+    // inductiveStepTwo: {
+    //     DistributedSystemInit[DistributedSystem] 
+    //     some ph: DistributedSystem.participants | { 
+    //         always next_state anyTransition[DistributedSystem, ph]
+    //     }
+    //     eventually not invariant[DistributedSystem]
+    // }
+    // is unsat
 }
 
 // option max_tracelength 10
