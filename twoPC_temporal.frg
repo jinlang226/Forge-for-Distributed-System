@@ -173,8 +173,6 @@ pred ptcpInit[v: ParticipantHost] {
 pred ptcpVote[v: ParticipantHost] {
     v.participantDecision = NoneDecision -- GUARD
     v.lastReceivedRequestFrom = CoordinatorHost -- received a request
-
--- TODO
     -- not var, so don't need a frame
     --v.preference' = v.preference 
 
@@ -293,10 +291,8 @@ pred ac4[d: DistributedSystem] {
 }
 
 pred safty[d: DistributedSystem] {
-    ac1[d] 
-    and 
-    ac3[d] 
-    and 
+    ac1[d] and 
+    ac3[d] and 
     ac4[d]
 }
 
@@ -345,13 +341,8 @@ test expect {
     inductiveStep: {
         #(DistributedSystem.coordinator) = 1  
         # CoordinatorHost = 1
-        // DistributedSystemWF[DistributedSystem]
         some ph: DistributedSystem.participants | { 
             anyTransition[DistributedSystem, ph] 
-            // coordSendReq[DistributedSystem.coordinator] //pass
-            // coordDecide[DistributedSystem.coordinator]
-            // ptcpVote[ph] //pass
-            // ptcpLearnDecision[ph] //not pass
         }
         invariant[DistributedSystem]
         not next_state invariant[DistributedSystem] 
