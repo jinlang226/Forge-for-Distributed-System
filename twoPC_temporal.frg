@@ -296,7 +296,9 @@ pred safty[d: DistributedSystem] {
     ac4[d]
 }
 
-
+//jw: After many attempts, it turns out just a few invariants were enough to get it running. 
+// However, what is weird is that if I commented out everything in `invariant` (line 307-308, 317-320), it still works.
+// If I comment out the line that calls `invariant` (e.g. line 338, 349, 350), it fails. 
 pred invariant[d: DistributedSystem] {
     // safty[d] 
     // and 
@@ -349,13 +351,13 @@ test expect {
     } 
     is unsat
 
-    //init and always next and eventually not safe
+    // init and always next and eventually not safe
     inductiveStepTwo: {  
         #(DistributedSystem.coordinator) = 1  
         # CoordinatorHost = 1
         DistributedSystemInit[DistributedSystem] 
         always (some ph: DistributedSystem.participants | { 
-            // next_state anyTransition[DistributedSystem, ph] //doNothing fails
+            // next_state anyTransition[DistributedSystem, ph] //jw: doNothing fails
             next_state coordSendReq[DistributedSystem.coordinator] //pass
             // next_state coordDecide[DistributedSystem.coordinator]  //pass 
             // next_state ptcpVote[ph] //pass 
