@@ -266,6 +266,8 @@ pred ac3[d: DistributedSystem] {
             h1.participantDecision = Abort
             and
             (d.coordinator).coordDecision = Abort
+            and
+            h1.lastReceivedRequestFrom = d.coordinator
         }
     }
 }
@@ -284,6 +286,8 @@ pred ac4[d: DistributedSystem] {
         } => {
             h1.participantDecision = Commit and
             (d.coordinator).coordDecision = Commit
+              and
+            h1.lastReceivedRequestFrom = d.coordinator
         }
     }
 }
@@ -305,24 +309,32 @@ pred coordinatorDecisionReflectsPreferences[d: DistributedSystem] {
     }
 }
 
+pred preferenceReflectsDecision[d: DistributedSystem] {
+    all h2: d.participants | (h2.preference = Yes and h2.participantDecision != NoneDecision) 
+        =>  (h2.participantDecision = Commit)
+        else (h2.participantDecision = Abort)
+}
+    
 
 pred invariant[d: DistributedSystem] {
-    safty[d] and 
-    coordinatorDecisionReflectsPreferences[d] and
+    safty[d] 
+    and 
+    coordinatorDecisionReflectsPreferences[d] 
+    and
     (all h1: d.participants | 
-    ((d.coordinator).votes[h1] = h1.preference)) and
-    (all h1: d.participants |
-        ((d.participants).preference = Yes) 
-        =>  (d.coordinator).coordDecision = Commit
-        else (d.coordinator).coordDecision = Abort) and
-    (all h1: d.participants |
-        ((d.participants).preference = Yes) 
-        =>  (d.participants).participantDecision = Commit
-        else (d.participants).participantDecision = Abort)
-    
-    all h1: d.participants | {
+    (((d.coordinator).votes[h1] != NoneVote) => (d.coordinator).votes[h1] = h1.preference)) 
+    // and   
+    // (all h1: d.participants | ((no h1.lastReceivedRequestFrom) and(h1.participantDecision = NoneDecision) and (d.coordinator.coordDecision = NoneDecision) and (d.coordinator.votes[h1] = NoneVote))
+    //     => (all h: d.participants | (h.participantDecision = NoneDecision) and d.coordinator.coordDecision = NoneDecision) )
+    and
+        ((all h1: d.participants |
+        (h1.preference = Yes and h1.participantDecision != NoneDecision and (d.coordinator).coordDecision != NoneDecision)
+        =>  (h1.participantDecision = Commit)
+        else (h1.participantDecision = Abort) ))
+    and 
+    (all h1: d.participants | {
         h1.preference in (Yes + No) 
-    } 
+    } )
         
 }
 
@@ -338,6 +350,8 @@ pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
 option max_tracelength 2
 test expect {
     // initStep: { 
+    //     #(DistributedSystem.coordinator) = 1  
+    //     # CoordinatorHost = 1
     //     DistributedSystemInit[DistributedSystem]
     //     not invariant[DistributedSystem]
     // } 
@@ -345,19 +359,22 @@ test expect {
 
 
     inductiveStep: {
-        // #(DistributedSystem.coordinator) = 1  
+        #(DistributedSystem.coordinator) = 1  
+        # CoordinatorHost = 1
         // DistributedSystemWF[DistributedSystem]
         some ph: DistributedSystem.participants | { 
             anyTransition[DistributedSystem, ph] 
+            // coordSendReq[DistributedSystem.coordinator] //pass
+            // coordDecide[DistributedSystem.coordinator]
+            // ptcpVote[ph] //pass
+            // ptcpLearnDecision[ph] //not pass
         }
-        invariant[DistributedSystem] 
+        invariant[DistributedSystem]
         not next_state invariant[DistributedSystem] 
     } 
     is unsat
 
-
-    // init and always next and eventually not safe
-    // inductiveStepTwo: {
+    // inductiveStepTwo: {  // init and always next and eventually not safe
     //     DistributedSystemInit[DistributedSystem] 
     //     some ph: DistributedSystem.participants | { 
     //         always next_state anyTransition[DistributedSystem, ph]
