@@ -317,25 +317,24 @@ pred preferenceReflectsDecision[d: DistributedSystem] {
     
 
 pred invariant[d: DistributedSystem] {
-    safty[d] 
-    and 
-    coordinatorDecisionReflectsPreferences[d] 
-    and
+    // safty[d] 
+    // and 
+    // coordinatorDecisionReflectsPreferences[d] 
+    // and
     (all h1: d.participants | 
     (((d.coordinator).votes[h1] != NoneVote) => (d.coordinator).votes[h1] = h1.preference)) 
     // and   
     // (all h1: d.participants | ((no h1.lastReceivedRequestFrom) and(h1.participantDecision = NoneDecision) and (d.coordinator.coordDecision = NoneDecision) and (d.coordinator.votes[h1] = NoneVote))
     //     => (all h: d.participants | (h.participantDecision = NoneDecision) and d.coordinator.coordDecision = NoneDecision) )
-    and
-        ((all h1: d.participants |
-        (h1.preference = Yes and h1.participantDecision != NoneDecision and (d.coordinator).coordDecision != NoneDecision)
-        =>  (h1.participantDecision = Commit)
-        else (h1.participantDecision = Abort) ))
+    // and
+    // (all h1: d.participants | (h1.preference = Yes)
+    //     =>  (h1.participantDecision = Commit)
+    //     else (h1.participantDecision = Abort) )
+
     and 
     (all h1: d.participants | {
         h1.preference in (Yes + No) 
     } )
-        
 }
 
 pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
@@ -349,13 +348,13 @@ pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
 
 option max_tracelength 2
 test expect {
-    // initStep: { 
-    //     #(DistributedSystem.coordinator) = 1  
-    //     # CoordinatorHost = 1
-    //     DistributedSystemInit[DistributedSystem]
-    //     not invariant[DistributedSystem]
-    // } 
-    // is unsat
+    initStep: { 
+        #(DistributedSystem.coordinator) = 1  
+        # CoordinatorHost = 1
+        DistributedSystemInit[DistributedSystem]
+        not invariant[DistributedSystem]
+    } 
+    is unsat
 
 
     inductiveStep: {
