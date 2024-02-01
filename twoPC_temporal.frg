@@ -300,21 +300,6 @@ pred safty[d: DistributedSystem] {
     ac4[d]
 }
 
-pred coordinatorDecisionReflectsPreferences[d: DistributedSystem] {
-    d.coordinator.coordDecision != NoneDecision
-    => {
-        (no ptcpHost: d.participants | ptcpHost.preference = No) 
-            =>   (d.coordinator).coordDecision = Commit 
-            else (d.coordinator).coordDecision = Abort 
-    }
-}
-
-pred preferenceReflectsDecision[d: DistributedSystem] {
-    all h2: d.participants | (h2.preference = Yes and h2.participantDecision != NoneDecision) 
-        =>  (h2.participantDecision = Commit)
-        else (h2.participantDecision = Abort)
-}
-    
 
 pred invariant[d: DistributedSystem] {
     // safty[d] 
@@ -373,14 +358,23 @@ test expect {
     } 
     is unsat
 
-    // inductiveStepTwo: {  // init and always next and eventually not safe
-    //     DistributedSystemInit[DistributedSystem] 
-    //     some ph: DistributedSystem.participants | { 
-    //         always next_state anyTransition[DistributedSystem, ph]
-    //     }
-    //     eventually not invariant[DistributedSystem]
-    // }
-    // is unsat
+    //init and always next and eventually not safe
+    inductiveStepTwo: {  
+        #(DistributedSystem.coordinator) = 1  
+        # CoordinatorHost = 1
+        DistributedSystemInit[DistributedSystem] 
+        always (some ph: DistributedSystem.participants | { 
+            // next_state anyTransition[DistributedSystem, ph] //doNothing fails
+            next_state coordSendReq[DistributedSystem.coordinator] //pass
+            // next_state coordDecide[DistributedSystem.coordinator]  //pass 
+            // next_state ptcpVote[ph] //pass 
+            // next_state ptcpLearnDecision[ph] //pass 
+            // next_state doNothing //fails
+        })
+        eventually not invariant[DistributedSystem]
+    }
+    is unsat
+    
 }
 
 // option max_tracelength 10
