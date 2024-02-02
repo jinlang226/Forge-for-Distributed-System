@@ -31,7 +31,7 @@
 abstract sig Vote {}
 -- "one": disallow multiple "Yes" objects in the world, etc.
 --  we can still have multiple _uses_ of the single canonical Yes, etc.
-one sig NoneVote, Yes, No extends Vote {} 
+one sig NoneVote, Yes, No, PrepToReceive extends Vote {} 
 
 abstract sig Decision {}
 one sig NoneDecision, Commit, Abort extends Decision {}
@@ -93,12 +93,11 @@ pred coordSendReq[v: CoordinatorHost] {
     -- left out, repeated, etc. So adding that the coordinator has no decision yet and 
     -- nobody has reported their vote successfully. 
     v.coordDecision = NoneDecision -- GUARD
-    all ph: ParticipantHost | v.votes[ph] = NoneVote -- GUARD
-    -- How will the participants learn of the request? We need to change their state, too. 
-    -- (Let's assume they just receive the message.)
+    //jw: I changed the line below `NoneVote` to `PrepToReceive`
+    all ph: ParticipantHost | v.votes[ph] = PrepToReceive -- GUARD
+    -- How will the participants learn of the request? We need to change their state, too. (Let's assume they just receive the message.)
     all ph: ParticipantHost | ph.lastReceivedRequestFrom' = v -- ACTION
     all ph: ParticipantHost | ph.participantDecision' = ph.participantDecision -- FRAME
-
     frameNoCoordinatorChange
 }
 
@@ -197,11 +196,7 @@ pred doNothing {
 
 
 // 2PC should satisfy the Atomic Commit specification:
-
 // AC-1: All processes that reach a decision reach the same one.
-// forall h1, h2 | ValidParticipantId(v, h1) && ValidParticipantId(v, h2) ::
-//   ParticipantVars(v, h1).decision.Some? && ParticipantVars(v, h2).decision.Some? ==>
-//     ParticipantVars(v, h1).decision.value == ParticipantVars(v, h2).decision.value
 pred ac1[d: DistributedSystem] {
     all h1, h2: d.participants | {
         h1.participantDecision != NoneDecision and h2.participantDecision != NoneDecision
@@ -211,12 +206,6 @@ pred ac1[d: DistributedSystem] {
 }
 
 // AC-3: If any host has a No preference, then the decision must be Abort.
-// Any host with a No preference forces an abort.
-// (exists hostid:HostId ::
-//    && ValidParticipantId(v, hostid)
-//    && ParticipantVars(v, hostid).c.preference.No?)
-// ==> forall h:HostId | ValidParticipantId(v, h) && ParticipantVars(v, h).decision.Some? ::
-//     ParticipantVars(v, h).decision.value == Abort
 pred ac3[d: DistributedSystem] {
     some h: d.participants | h.preference = No
     => {
@@ -233,11 +222,6 @@ pred ac3[d: DistributedSystem] {
 }
 
 // AC-4: If all processes prefer Yes, then the decision must be Commit.
-// If every host has a Yes preference we must commit.
-// (forall hostid:HostId | ValidParticipantId(v, hostid) ::
-//    ParticipantVars(v, hostid).c.preference.Yes?)
-// => forall h:HostId | ValidParticipantId(v, h) && ParticipantVars(v, h).decision.Some? ::
-//     ParticipantVars(v, h).decision.value == Commit
 pred ac4[d: DistributedSystem] {
     all h: d.participants | h.preference = Yes
     => {
@@ -258,51 +242,33 @@ pred safety[d: DistributedSystem] {
     ac4[d]
 }
 
-//jw: After many attempts, it turns out just a few invariants were enough to get it running. 
-// However, what is weird is that if I commented out everything in `invariant` (line 307-308, 317-320), it still works.
-// If I comment out the line that calls `invariant` (e.g. line 338, 349, 350), it fails. 
 pred invariant[d: DistributedSystem] {
-    /*
-    and  
-    (ParticipantHost.lastReceivedRequestFrom = d.coordinator )
-     =>(all h1: d.participants | 
-        (h1.preference = Yes)
-            =>  (h1.participantDecision = Commit)
-            else (h1.participantDecision = Abort))
-    and (all h1: d.participants | (h1.preference = Yes)
-        =>  (h1.participantDecision = Commit)
-        else (h1.participantDecision = Abort) )
-    // and (ParticipantHost.lastReceivedRequestFrom = d.coordinator and d.coordinator.coordDecision != NoneDecision => 
-    //     (all h1: d.participants | h1.participantDecision in (Abort + Commit) ))
-    // and (ParticipantHost.lastReceivedRequestFrom = d.coordinator and d.coordinator.votes[ParticipantHost] = NoneVote => 
-    //     d.coordinator.coordDecision = NoneDecision)
-    // and ((d.coordinator.coordDecision = NoneDecision and 
-    //     d.coordinator.votes[ParticipantHost] = NoneVote and 
-    //     ParticipantHost.participantDecision = NoneDecision) =>
-    //     (ParticipantHost.lastReceivedRequestFrom = d.coordinator or no ParticipantHost.lastReceivedRequestFrom))
-    //     //jw: ParticipantHost.lastReceivedRequestFrom cannot be distinguished between init and coordinator request vote
-    // and (ParticipantHost.lastReceivedRequestFrom = d.coordinator and d.coordinator.votes[ParticipantHost] != NoneVote => 
-    //     d.coordinator.coordDecision != NoneDecision)
-    // and (some ph: DistributedSystem.participants | { 
-    //         ph.lastReceivedRequestFrom = d.coordinator => d.coordinator.votes[ph] != NoneVote
-    //     })
-    */
+    (ParticipantHost.lastReceivedRequestFrom = d.coordinator and d.coordinator.coordDecision != NoneDecision => 
+        (all h1: d.participants | h1.participantDecision in (Abort + Commit) )) and
+    (ParticipantHost.lastReceivedRequestFrom = d.coordinator and d.coordinator.votes[ParticipantHost] = NoneVote => 
+        d.coordinator.coordDecision = NoneDecision) and 
+    ((d.coordinator.coordDecision = NoneDecision and 
+        d.coordinator.votes[ParticipantHost] = NoneVote and 
+        ParticipantHost.participantDecision = NoneDecision) =>
+        (ParticipantHost.lastReceivedRequestFrom = d.coordinator or no ParticipantHost.lastReceivedRequestFrom)) and
+        //jw: ParticipantHost.lastReceivedRequestFrom cannot be distinguished between init and coordinator request vote
+    (ParticipantHost.lastReceivedRequestFrom = d.coordinator and d.coordinator.votes[ParticipantHost] != NoneVote => 
+        d.coordinator.coordDecision != NoneDecision) and
+    (some ph: DistributedSystem.participants | { 
+            ph.lastReceivedRequestFrom = d.coordinator => d.coordinator.votes[ph] != NoneVote
+        }) and
     DistributedSystemWF[d] and
     safety[d] and 
     (all h1: d.participants | 
-    (((d.coordinator).votes[h1] != NoneVote) => (d.coordinator).votes[h1] = h1.preference)) 
-    // and   
-    // (all h1: d.participants | ((no h1.lastReceivedRequestFrom) and(h1.participantDecision = NoneDecision) and (d.coordinator.coordDecision = NoneDecision) and (d.coordinator.votes[h1] = NoneVote))
-    //     => (all h: d.participants | (h.participantDecision = NoneDecision) and d.coordinator.coordDecision = NoneDecision) )
-    and
-    (all h1: d.participants | (d.coordinator.votes[h1] = Yes)
-        =>  (h1.participantDecision = Commit)
-        else (h1.participantDecision = Abort) )
-    and 
+    (((d.coordinator).votes[h1] != NoneVote) => (d.coordinator).votes[h1] = h1.preference)) and
+    (ParticipantHost.lastReceivedRequestFrom = d.coordinator =>
+        (all h1: d.participants | (d.coordinator.votes[h1] = Yes)
+            =>  (h1.participantDecision = Commit)
+            else (h1.participantDecision = Abort))) and 
+
     (all h1: d.participants | {
         h1.preference in (Yes + No) 
     } )
-    
 }
 
 pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
@@ -316,15 +282,16 @@ pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
 
 option max_tracelength 2
 test expect {
-    // initStep: { 
-    //     DistributedSystemInit[DistributedSystem]
-    //     not invariant[DistributedSystem]
-    // } 
-    // is unsat
+    initStep: { 
+        DistributedSystemInit[DistributedSystem]
+        not invariant[DistributedSystem]
+    } 
+    is unsat
 
     inductiveStep: {
         (some ph: DistributedSystem.participants | { 
             anyTransition[DistributedSystem, ph] 
+            // coordSendReq[DistributedSystem.coordinator] //jw: the change above make this pass
         }) and
         invariant[DistributedSystem] and
         not next_state invariant[DistributedSystem] 
