@@ -252,7 +252,7 @@ pred ac4[d: DistributedSystem] {
     }
 }
 
-pred saftey[d: DistributedSystem] {
+pred safety[d: DistributedSystem] {
     ac1[d] and 
     ac3[d] and 
     ac4[d]
@@ -262,26 +262,34 @@ pred saftey[d: DistributedSystem] {
 // However, what is weird is that if I commented out everything in `invariant` (line 307-308, 317-320), it still works.
 // If I comment out the line that calls `invariant` (e.g. line 338, 349, 350), it fails. 
 pred invariant[d: DistributedSystem] {
-
-    DistributedSystemWF[d]
-    // safety[d] 
-    // and 
-    // coordinatorDecisionReflectsPreferences[d] 
-    // and
+    DistributedSystemWF[d] and
+    // safety[d]  and
     (all h1: d.participants | 
     (((d.coordinator).votes[h1] != NoneVote) => (d.coordinator).votes[h1] = h1.preference)) 
-    // and   
-    // (all h1: d.participants | ((no h1.lastReceivedRequestFrom) and(h1.participantDecision = NoneDecision) and (d.coordinator.coordDecision = NoneDecision) and (d.coordinator.votes[h1] = NoneVote))
-    //     => (all h: d.participants | (h.participantDecision = NoneDecision) and d.coordinator.coordDecision = NoneDecision) )
-    // and
-    // (all h1: d.participants | (h1.preference = Yes)
-    //     =>  (h1.participantDecision = Commit)
-    //     else (h1.participantDecision = Abort) )
-
-    and 
+    and
     (all h1: d.participants | {
         h1.preference in (Yes + No) 
     } )
+    // and  
+    // (ParticipantHost.lastReceivedRequestFrom = d.coordinator )
+    //  =>(all h1: d.participants | 
+    //     (h1.preference = Yes)
+    //         =>  (h1.participantDecision = Commit)
+    //         else (h1.participantDecision = Abort))
+    and (ParticipantHost.lastReceivedRequestFrom = d.coordinator and d.coordinator.coordDecision != NoneDecision => 
+        (all h1: d.participants | h1.participantDecision in (Abort + Commit) ))
+    and (ParticipantHost.lastReceivedRequestFrom = d.coordinator and d.coordinator.votes[ParticipantHost] = NoneVote => 
+        d.coordinator.coordDecision = NoneDecision)
+    and ((d.coordinator.coordDecision = NoneDecision and 
+        d.coordinator.votes[ParticipantHost] = NoneVote and 
+        ParticipantHost.participantDecision = NoneDecision) =>
+        (ParticipantHost.lastReceivedRequestFrom = d.coordinator or no ParticipantHost.lastReceivedRequestFrom))
+        //jw: ParticipantHost.lastReceivedRequestFrom cannot be distinguished between init and coordinator request vote
+    and (ParticipantHost.lastReceivedRequestFrom = d.coordinator and d.coordinator.votes[ParticipantHost] != NoneVote => 
+        d.coordinator.coordDecision != NoneDecision)
+    and (some ph: DistributedSystem.participants | { 
+            ph.lastReceivedRequestFrom = d.coordinator => d.coordinator.votes[ph] != NoneVote
+        })
 }
 
 pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
