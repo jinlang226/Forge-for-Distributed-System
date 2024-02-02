@@ -36,19 +36,6 @@ one sig NoneVote, Yes, No extends Vote {}
 abstract sig Decision {}
 one sig NoneDecision, Commit, Abort extends Decision {}
 
--- Different types of message used in the protocol; each can have different
--- fields that reflect its purpose and contents.
-// abstract sig Message { }
-// sig NoneMessage extends Message {} -- represents a missing message/response
-// sig VoteReqMsg extends Message {}  -- step 1 (coordinator sends)
-// sig VoteMsg extends Message {      -- step 2 (participant sends)
-//     sender: one ParticipantHost, 
-//     voteChoice: one Vote
-// }    
-// sig DecisionMsg extends Message { -- step 3 (coordinator sends) 
-//     decision: one Decision
-// } 
-
 -- Steps of the protocol
 abstract sig Steps {}
 one sig CoordSendReqStep, CoordLearnVoteStep, CoordDecideStep, 
@@ -56,7 +43,6 @@ one sig CoordSendReqStep, CoordLearnVoteStep, CoordDecideStep,
 
 -- DistributedSystem
 ---------------------------------------------------------------------------------
-
 -- Represents the current state of our distributed system
 -- There is only one such state at any moment, and the roles of each node are constant.
 one sig DistributedSystem {
@@ -94,11 +80,9 @@ pred coordWellformed[h: CoordinatorHost] {
 }
 
 pred coordInit[v: CoordinatorHost] {
-    // No votes recorded yet
     -- This "lookup" is a join that asks for the set of votes for *all* ParticipantHosts
-    v.votes[ParticipantHost] = NoneVote 
-    // No decision recorded yet
-    v.coordDecision = NoneDecision
+    v.votes[ParticipantHost] = NoneVote // No votes recorded yet
+    v.coordDecision = NoneDecision // No decision recorded yet
 }
 
 // STEP 1
@@ -114,26 +98,7 @@ pred coordSendReq[v: CoordinatorHost] {
     all ph: ParticipantHost | ph.participantDecision' = ph.participantDecision -- FRAME
 
     frameNoCoordinatorChange
-    // v.lastReceivedRequestFrom' = v.lastReceivedRequestFrom -- FRAME
-    // frameNoOtherParticipantChange[v] -- FRAME
-
 }
-
--- STEP 3
-// pred coordLearnVote[v: CoordinatorHost] {
-//     v.coordDecision = NoneDecision -- GUARD
-//     v.votes[VoteMsg.sender] = NoneVote -- GUARD
-    
-//     // recv.sender = ParticipantHost
-//     // recv.voteChoice = Vote
-
-//     v.votes'[VoteMsg.sender] = VoteMsg.voteChoice -- EFFECT
-//     v.coordDecision' = v.coordDecision -- prime = in next state
-//     v.participantCount' = v.participantCount -- prime = in next state
-//     // frameNoOtherParticipantChange[v]
-
-//     -- NOTE: if we forget to constrain a var field, its value becomes non-deterministic.
-// }
 
 pred coordDecide[v: CoordinatorHost] {
     v.coordDecision = NoneDecision -- GUARD
@@ -147,8 +112,6 @@ pred coordDecide[v: CoordinatorHost] {
     v.votes' = v.votes -- EFFECT (FRAME)
     all ph: ParticipantHost | ph.lastReceivedRequestFrom' = ph.lastReceivedRequestFrom -- ACTION
     all ph: ParticipantHost | ph.participantDecision' = ph.participantDecision -- FRAME
-    // all ph: ParticipantHost | ph.participantDecision' = (v.coordDecision)' //this works
-    // frameNoOtherParticipantChange[v]
 }
 
 -- ParticipantHost
@@ -173,11 +136,9 @@ pred ptcpInit[v: ParticipantHost] {
 pred ptcpVote[v: ParticipantHost] {
     v.participantDecision = NoneDecision -- GUARD
     v.lastReceivedRequestFrom = CoordinatorHost -- received a request
-    -- not var, so don't need a frame
-    --v.preference' = v.preference 
+    --v.preference' = v.preference  -- not var, so don't need a frame 
 
     -- abstract out network for now; direct change to CoordinatorHost
-    --frameNoCoordinatorChange
     
     all ph: ParticipantHost-v | {
         (CoordinatorHost.votes[ph])' = CoordinatorHost.votes[ph] 
@@ -210,7 +171,6 @@ pred ptcpLearnDecision[v: ParticipantHost] {
     v.participantDecision = NoneDecision 
     (v.participantDecision)' = CoordinatorHost.coordDecision
     (v.lastReceivedRequestFrom)' = v.lastReceivedRequestFrom  
-    
     CoordinatorHost.coordDecision in (Abort + Commit)
     frameNoCoordinatorChange 
     frameNoOtherParticipantChange[v]
@@ -352,79 +312,56 @@ test expect {
     is unsat
 
     // init and always next and eventually not safe
-    inductiveStepTwo: {  
-        #(DistributedSystem.coordinator) = 1  
-        # CoordinatorHost = 1
-        DistributedSystemInit[DistributedSystem] 
-        always (some ph: DistributedSystem.participants | { 
-            // next_state anyTransition[DistributedSystem, ph] //jw: doNothing fails
-            next_state coordSendReq[DistributedSystem.coordinator] //pass
-            // next_state coordDecide[DistributedSystem.coordinator]  //pass 
-            // next_state ptcpVote[ph] //pass 
-            // next_state ptcpLearnDecision[ph] //pass 
-            // next_state doNothing //fails
-        })
-        eventually not invariant[DistributedSystem]
-    }
-    is unsat
+    // inductiveStepTwo: {  
+    //     #(DistributedSystem.coordinator) = 1  
+    //     # CoordinatorHost = 1
+    //     DistributedSystemInit[DistributedSystem] 
+    //     always (some ph: DistributedSystem.participants | { 
+    //         // next_state anyTransition[DistributedSystem, ph] //jw: doNothing fails
+    //         next_state coordSendReq[DistributedSystem.coordinator] //pass
+    //         // next_state coordDecide[DistributedSystem.coordinator]  //pass 
+    //         // next_state ptcpVote[ph] //pass 
+    //         // next_state ptcpLearnDecision[ph] //pass 
+    //         // next_state doNothing //fails
+    //     })
+    //     eventually not invariant[DistributedSystem]
+    // }
+    // is unsat
     
 }
 
-// option max_tracelength 10
-// run {
-//     -- Start in an initial state (there's only one DistributedSystem, so we can use the type name safely)
-//     DistributedSystemInit[DistributedSystem]
-//     -- Always follow the transition relation. Restrict to the first two for now.
-//     always {
-//         some step: Steps| { 
-//             -- NOTE: Beware; don't use the steps in the transition functions as guards / update them, 
-//             -- otherwise the distributed system becomes extremely well-behaved 
-//             {step = CoordSendReqStep and coordSendReq[DistributedSystem.coordinator]}
-//             or 
-//             {step = PtcpVoteStep and {some ph: DistributedSystem.participants |  {ptcpVote[ph]}}} 
-//             or 
-//             {doNothing}
-//             or 
-//             {
-//                 step = CoordDecideStep 
-//                 and 
-//                 (no ptcpHost: ParticipantHost | (DistributedSystem.coordinator).votes[ptcpHost] = NoneVote) 
-//                 and
-//                 coordDecide[DistributedSystem.coordinator]
-//             }
-//             or
-//             {   
-//                 step = PtcpLearnDecisionStep 
-//                 // and 
-//                 // (DistributedSystem.coordinator).coordDecision in (Abort + Commit)
-//                 and
-//                 {some ph: DistributedSystem.participants | {ptcpLearnDecision[ph]}} 
-//             } 
-    
-//         } 
-//     }
+// visualization of steps
+/*
+option max_tracelength 10
+run {
+    -- Start in an initial state (there's only one DistributedSystem, so we can use the type name safely)
+    DistributedSystemInit[DistributedSystem]
+    -- Always follow the transition relation. Restrict to the first two for now.
+    always {
+        some step: Steps| { 
+            -- NOTE: Beware; don't use the steps in the transition functions as guards / update them, 
+            -- otherwise the distributed system becomes extremely well-behaved 
+            {step = CoordSendReqStep and coordSendReq[DistributedSystem.coordinator]}
+            or 
+            {step = PtcpVoteStep and {some ph: DistributedSystem.participants |  {ptcpVote[ph]}}} 
+            or 
+            {doNothing}
+            or 
+            {
+                step = CoordDecideStep and 
+                (no ptcpHost: ParticipantHost | (DistributedSystem.coordinator).votes[ptcpHost] = NoneVote) and
+                coordDecide[DistributedSystem.coordinator]
+            }
+            or
+            {   
+                step = PtcpLearnDecisionStep and
+                {some ph: DistributedSystem.participants | {ptcpLearnDecision[ph]}} 
+            } 
+        } 
+    }
 
-//     -- Narrow scope of traces; we want to see something interesting!
-//     -- Note: I don't quite understand what the recv field is for?
-//     -- Start state: step 1 
-//     // coordSendReq[DistributedSystem.coordinator] 
-//     -- 2nd state: step 2  (next_state in Forge ~= LTL X ~= Alloy 6 after)
-//     // next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
-//     // next_state next_state {some ph: DistributedSystem.participants | ptcpVote[ph]}
-//     // -- 4th state: step 4
-//     // next_state next_state next_state  {coordDecide[DistributedSystem.coordinator]}
-//     // next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
-//     // next_state next_state next_state next_state next_state {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
-
-
-//     // eventually coordSendReq[DistributedSystem.coordinator] 
-//     // eventually {some ph: DistributedSystem.participants | ptcpVote[ph]}
-//     // // eventually {some ph: DistributedSystem.participants | ptcpVote[ph]}
-//     // eventually  {coordDecide[DistributedSystem.coordinator]}
-//     // eventually {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
-//     eventually {all ph: DistributedSystem.participants | ph.participantDecision in (Abort + Commit)} 
-//     // eventually {some ph: DistributedSystem.participants | ptcpLearnDecision[ph]}
-//     -- Make sure we didn't break something!
-//     # ParticipantHost > 1 
-// } 
-// -- We no longer need the "is linear"
+    eventually {all ph: DistributedSystem.participants | ph.participantDecision in (Abort + Commit)} 
+    -- Make sure we didn't break something!
+    # ParticipantHost > 1 
+}  -- We no longer need the "is linear"
+*/
