@@ -52,6 +52,8 @@ one sig DistributedSystem {
 }
 
 pred DistributedSystemWF[d: DistributedSystem] {
+    #(DistributedSystem.coordinator) = 1  
+    # CoordinatorHost = 1
     d.coordinator.participantCount = #(d.participants)
     coordWellformed[d.coordinator]
 }
@@ -250,7 +252,7 @@ pred ac4[d: DistributedSystem] {
     }
 }
 
-pred safty[d: DistributedSystem] {
+pred saftey[d: DistributedSystem] {
     ac1[d] and 
     ac3[d] and 
     ac4[d]
@@ -260,7 +262,9 @@ pred safty[d: DistributedSystem] {
 // However, what is weird is that if I commented out everything in `invariant` (line 307-308, 317-320), it still works.
 // If I comment out the line that calls `invariant` (e.g. line 338, 349, 350), it fails. 
 pred invariant[d: DistributedSystem] {
-    // safty[d] 
+
+    DistributedSystemWF[d]
+    // safety[d] 
     // and 
     // coordinatorDecisionReflectsPreferences[d] 
     // and
@@ -292,42 +296,25 @@ pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
 option max_tracelength 2
 test expect {
     initStep: { 
-        #(DistributedSystem.coordinator) = 1  
-        # CoordinatorHost = 1
         DistributedSystemInit[DistributedSystem]
         not invariant[DistributedSystem]
     } 
     is unsat
 
-
     inductiveStep: {
-        #(DistributedSystem.coordinator) = 1  
-        # CoordinatorHost = 1
-        some ph: DistributedSystem.participants | { 
+        (some ph: DistributedSystem.participants | { 
             anyTransition[DistributedSystem, ph] 
-        }
-        invariant[DistributedSystem]
+        }) and
+        invariant[DistributedSystem] and
         not next_state invariant[DistributedSystem] 
     } 
     is unsat
 
-    // init and always next and eventually not safe
-    // inductiveStepTwo: {  
-    //     #(DistributedSystem.coordinator) = 1  
-    //     # CoordinatorHost = 1
-    //     DistributedSystemInit[DistributedSystem] 
-    //     always (some ph: DistributedSystem.participants | { 
-    //         // next_state anyTransition[DistributedSystem, ph] //jw: doNothing fails
-    //         next_state coordSendReq[DistributedSystem.coordinator] //pass
-    //         // next_state coordDecide[DistributedSystem.coordinator]  //pass 
-    //         // next_state ptcpVote[ph] //pass 
-    //         // next_state ptcpLearnDecision[ph] //pass 
-    //         // next_state doNothing //fails
-    //     })
-    //     eventually not invariant[DistributedSystem]
-    // }
-    // is unsat
-    
+    invImpliesSafety: { 
+        invariant[DistributedSystem] and
+        not safety[DistributedSystem] 
+    }
+    is unsat
 }
 
 // visualization of steps
