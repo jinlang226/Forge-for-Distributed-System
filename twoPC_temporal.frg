@@ -181,7 +181,6 @@ pred frameNoOtherParticipantChange[ph: ParticipantHost] {
 
 -- Two Phase Commit
 ---------------------------------------------------------------------------------
-
 -- This transition causes the system to "stutter", allowing us to see traces that exhibit 
 -- deadlocks, etc. The key is that we frame _every var field_ to remain the same.
 pred doNothing {
@@ -198,7 +197,6 @@ pred doNothing {
 
 
 // 2PC should satisfy the Atomic Commit specification:
-
 // AC-1: All processes that reach a decision reach the same one.
 pred ac1[d: DistributedSystem] {
     all h1, h2: d.participants | {
@@ -250,8 +248,7 @@ pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
     coordSendReq[d.coordinator] or
     coordDecide[d.coordinator] or
     ptcpVote[ph] or
-    ptcpLearnDecision[ph] 
-    or
+    ptcpLearnDecision[ph] or
     doNothing
 }
 
