@@ -34,8 +34,10 @@ abstract sig Vote {}
 one sig NoneVote, Yes, No extends Vote {} 
 
 abstract sig Decision {}
-one sig InitNoneDecision, NoneDecision, Commit, Abort extends Decision {}
-
+// jw: I added a `InitNoneDecision` below to represent the initial state. 
+// This is because I need to distinguish between the initial state and VoteReqStep. 
+// Otherwise, forge seems have trouble to prove the InitStep
+one sig InitNoneDecision, NoneDecision, Commit, Abort extends Decision {} 
 -- Steps of the protocol
 abstract sig Steps {}
 one sig CoordSendReqStep, CoordLearnVoteStep, CoordDecideStep, 
@@ -66,7 +68,6 @@ pred DistributedSystemInit[d: DistributedSystem] {
     all p: d.participants | {    -- all participants also in start state
         ptcpInit[p]
     }
-    // no d.msg
 }
 
 -- CoordinatorHost
@@ -91,35 +92,27 @@ pred coordInit[v: CoordinatorHost] {
 
 // STEP 1
 pred coordSendReq[v: CoordinatorHost] {
-    // DistributedSystem.msg = CoordSendReqStep
-    // DistributedSystem.msg = CoordSendReqStep
-
     -- As written before, this changed no state whatsoever, meaning that it could be 
     -- left out, repeated, etc. So adding that the coordinator has no decision yet and 
     -- nobody has reported their vote successfully. 
-    v.coordDecision = InitNoneDecision -- GUARD
-    v.coordDecision' = NoneDecision 
+    v.coordDecision = InitNoneDecision 
+    v.coordDecision' = NoneDecision -- GUARD 
     all ph: ParticipantHost | v.votes[ph] = NoneVote -- GUARD
     -- How will the participants learn of the request? We need to change their state, too. 
     -- (Let's assume they just receive the message.)
     all ph: ParticipantHost | ph.lastReceivedRequestFrom' = v -- ACTION
     all ph: ParticipantHost | ph.participantDecision' = ph.participantDecision -- FRAME
-    // v.msg = Init 
-    // frameNoCoordinatorChange
     CoordinatorHost.votes' = CoordinatorHost.votes 
 }
 
 // STEP 3
 pred coordDecide[v: CoordinatorHost] {
-    // DistributedSystem.msg = CoordDecideStep
-    // DistributedSystem.msg' = CoordDecideStep
     v.coordDecision = NoneDecision -- GUARD
     no ptcpHost: ParticipantHost | (DistributedSystem.coordinator).votes[ptcpHost] = NoneVote
     -- Beware associativity here; let's add parentheses to be sure. We'll also use if/else.
     ((all ptcpHost: ParticipantHost | v.votes[ptcpHost] = Yes))
         =>  (v.coordDecision)' = Commit 
         else (v.coordDecision)' = Abort 
-
     v.participantCount' = v.participantCount -- EFFECT (FRAME)
     v.votes' = v.votes -- EFFECT (FRAME)
     all ph: ParticipantHost | ph.lastReceivedRequestFrom' = ph.lastReceivedRequestFrom -- ACTION
@@ -128,7 +121,6 @@ pred coordDecide[v: CoordinatorHost] {
 
 -- ParticipantHost
 ---------------------------------------------------------------------------------
-
 -- In temporal mode, a stable entity, but some fields may be `var`iable over time
 sig ParticipantHost {
     preference: one Vote, -- leaving this non-variable 
@@ -146,15 +138,11 @@ pred ptcpInit[v: ParticipantHost] {
 
 // STEP 2
 pred ptcpVote[v: ParticipantHost] {
-    // DistributedSystem.msg = PtcpVoteStep 
-    // DistributedSystem.msg' = PtcpVoteStep 
-
     v.participantDecision = NoneDecision -- GUARD
     v.lastReceivedRequestFrom = CoordinatorHost -- received a request
     --v.preference' = v.preference  -- not var, so don't need a frame 
 
     -- abstract out network for now; direct change to CoordinatorHost
-    
     all ph: ParticipantHost-v | {
         (CoordinatorHost.votes[ph])' = CoordinatorHost.votes[ph] 
     }
@@ -202,7 +190,6 @@ pred doNothing {
     all ch: CoordinatorHost | {
         ch.coordDecision' = ch.coordDecision
         ch.votes' = ch.votes
-        // ch.msg' = ch.msg
     }
     all ph: ParticipantHost | {
         ph.participantDecision' = ph.participantDecision
@@ -255,10 +242,8 @@ pred ac4[d: DistributedSystem] {
 }
 
 pred safety[d: DistributedSystem] {
-    ac1[d] 
-    and 
-    ac3[d] 
-    and 
+    ac1[d] and 
+    ac3[d] and 
     ac4[d]
 }
 
