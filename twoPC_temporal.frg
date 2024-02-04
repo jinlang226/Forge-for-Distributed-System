@@ -178,7 +178,6 @@ pred frameNoOtherParticipantChange[ph: ParticipantHost] {
         v.lastReceivedRequestFrom' = v.lastReceivedRequestFrom 
     }
 }
---------------------------------------------
 
 -- Two Phase Commit
 ---------------------------------------------------------------------------------
