@@ -28,16 +28,13 @@
 
 -- Message
 ---------------------------------------------------------------------------------
-abstract sig Message {}
-one sig Other, Init extends Message {}
-
 abstract sig Vote {}
 -- "one": disallow multiple "Yes" objects in the world, etc.
 --  we can still have multiple _uses_ of the single canonical Yes, etc.
 one sig NoneVote, Yes, No extends Vote {} 
 
 abstract sig Decision {}
-one sig NoneDecision, Commit, Abort extends Decision {}
+one sig InitNoneDecision, NoneDecision, Commit, Abort extends Decision {}
 
 -- Steps of the protocol
 abstract sig Steps {}
@@ -50,13 +47,14 @@ one sig CoordSendReqStep, CoordLearnVoteStep, CoordDecideStep,
 -- There is only one such state at any moment, and the roles of each node are constant.
 one sig DistributedSystem {
    -- In temporal mode, these are now stable identities. 
-   coordinator: one CoordinatorHost,
-   participants: set ParticipantHost
+    coordinator: one CoordinatorHost,
+    participants: set ParticipantHost
 }
 
 pred DistributedSystemWF[d: DistributedSystem] {
     #(d.coordinator) = 1  
     # CoordinatorHost = 1
+    #(d.participants) = 2
     d.coordinator.participantCount = #(d.participants)
     coordWellformed[d.coordinator]
 }
@@ -68,6 +66,7 @@ pred DistributedSystemInit[d: DistributedSystem] {
     all p: d.participants | {    -- all participants also in start state
         ptcpInit[p]
     }
+    // no d.msg
 }
 
 -- CoordinatorHost
@@ -77,8 +76,7 @@ pred DistributedSystemInit[d: DistributedSystem] {
 sig CoordinatorHost {
     participantCount: one Int,  -- not variable
     var coordDecision: one Decision,
-    var votes: func ParticipantHost -> Vote, -- for each participant, what is its vote?
-    var msg: lone Message
+    var votes: func ParticipantHost -> Vote -- for each participant, what is its vote?
 }
 
 pred coordWellformed[h: CoordinatorHost] {
@@ -88,34 +86,41 @@ pred coordWellformed[h: CoordinatorHost] {
 pred coordInit[v: CoordinatorHost] {
     -- This "lookup" is a join that asks for the set of votes for *all* ParticipantHosts
     v.votes[ParticipantHost] = NoneVote // No votes recorded yet
-    v.coordDecision = NoneDecision // No decision recorded yet
-    no v.msg
+    v.coordDecision = InitNoneDecision // No decision recorded yet
 }
 
 // STEP 1
 pred coordSendReq[v: CoordinatorHost] {
+    // DistributedSystem.msg = CoordSendReqStep
+    // DistributedSystem.msg = CoordSendReqStep
+
     -- As written before, this changed no state whatsoever, meaning that it could be 
     -- left out, repeated, etc. So adding that the coordinator has no decision yet and 
     -- nobody has reported their vote successfully. 
-    v.coordDecision = NoneDecision -- GUARD
+    v.coordDecision = InitNoneDecision -- GUARD
+    v.coordDecision' = NoneDecision 
     all ph: ParticipantHost | v.votes[ph] = NoneVote -- GUARD
     -- How will the participants learn of the request? We need to change their state, too. 
     -- (Let's assume they just receive the message.)
     all ph: ParticipantHost | ph.lastReceivedRequestFrom' = v -- ACTION
     all ph: ParticipantHost | ph.participantDecision' = ph.participantDecision -- FRAME
     // v.msg = Init 
-    v.msg' = Init
-    frameNoCoordinatorChange
+    // frameNoCoordinatorChange
+    CoordinatorHost.votes' = CoordinatorHost.votes 
 }
 
+// STEP 3
 pred coordDecide[v: CoordinatorHost] {
+    // DistributedSystem.msg = CoordDecideStep
+    // DistributedSystem.msg' = CoordDecideStep
     v.coordDecision = NoneDecision -- GUARD
-    v.msg = Init
-    v.msg' = Other 
+    no ptcpHost: ParticipantHost | (DistributedSystem.coordinator).votes[ptcpHost] = NoneVote
     -- Beware associativity here; let's add parentheses to be sure. We'll also use if/else.
-    (no ptcpHost: ParticipantHost | v.votes[ptcpHost] = No) 
-        =>   (v.coordDecision)' = Commit 
-        else (v.coordDecision)' = Abort 
+    ((all ptcpHost: ParticipantHost | v.votes[ptcpHost] = Yes) and (all ptcpHost1: ParticipantHost | v.votes[ptcpHost1] != NoneVote) )
+        =>  (v.coordDecision)' = Commit 
+
+    ((some ptcpHost2: ParticipantHost | v.votes[ptcpHost2] = No) and (all ptcpHost3: ParticipantHost | v.votes[ptcpHost3] != NoneVote) )
+        => (v.coordDecision)' = Abort 
 
     v.participantCount' = v.participantCount -- EFFECT (FRAME)
     v.votes' = v.votes -- EFFECT (FRAME)
@@ -143,6 +148,9 @@ pred ptcpInit[v: ParticipantHost] {
 
 // STEP 2
 pred ptcpVote[v: ParticipantHost] {
+    // DistributedSystem.msg = PtcpVoteStep 
+    // DistributedSystem.msg' = PtcpVoteStep 
+
     v.participantDecision = NoneDecision -- GUARD
     v.lastReceivedRequestFrom = CoordinatorHost -- received a request
     --v.preference' = v.preference  -- not var, so don't need a frame 
@@ -153,13 +161,22 @@ pred ptcpVote[v: ParticipantHost] {
         (CoordinatorHost.votes[ph])' = CoordinatorHost.votes[ph] 
     }
     CoordinatorHost.votes[v] = NoneVote 
-    CoordinatorHost.msg = Init
-    CoordinatorHost.msg' = Init
     (CoordinatorHost.votes[v])' = v.preference -- ACTION (direct, no network)
     CoordinatorHost.coordDecision' = CoordinatorHost.coordDecision -- FRAME
     v.participantDecision' = v.participantDecision -- FRAME
     v.lastReceivedRequestFrom' = v.lastReceivedRequestFrom -- FRAME
     frameNoOtherParticipantChange[v] -- FRAME
+}
+
+// STEP 4
+pred ptcpLearnDecision[v: ParticipantHost] {
+    v.lastReceivedRequestFrom = CoordinatorHost 
+    v.participantDecision = NoneDecision 
+    (v.participantDecision)' = CoordinatorHost.coordDecision
+    (v.lastReceivedRequestFrom)' = v.lastReceivedRequestFrom  
+    CoordinatorHost.coordDecision in (Abort + Commit)
+    frameNoCoordinatorChange 
+    frameNoOtherParticipantChange[v]
 }
 
 --------------------------------------------
@@ -177,18 +194,6 @@ pred frameNoOtherParticipantChange[ph: ParticipantHost] {
 }
 --------------------------------------------
 
-pred ptcpLearnDecision[v: ParticipantHost] {
-    CoordinatorHost.msg = Other
-    CoordinatorHost.msg' = Other
-    v.lastReceivedRequestFrom = CoordinatorHost 
-    v.participantDecision = NoneDecision 
-    (v.participantDecision)' = CoordinatorHost.coordDecision
-    (v.lastReceivedRequestFrom)' = v.lastReceivedRequestFrom  
-    CoordinatorHost.coordDecision in (Abort + Commit)
-    frameNoCoordinatorChange 
-    frameNoOtherParticipantChange[v]
-}
-
 -- Two Phase Commit
 ---------------------------------------------------------------------------------
 
@@ -199,7 +204,7 @@ pred doNothing {
     all ch: CoordinatorHost | {
         ch.coordDecision' = ch.coordDecision
         ch.votes' = ch.votes
-        ch.msg' = ch.msg
+        // ch.msg' = ch.msg
     }
     all ph: ParticipantHost | {
         ph.participantDecision' = ph.participantDecision
@@ -213,18 +218,19 @@ pred doNothing {
 // AC-1: All processes that reach a decision reach the same one.
 pred ac1[d: DistributedSystem] {
     all h1, h2: d.participants | {
-        h1.participantDecision != NoneDecision and h2.participantDecision != NoneDecision
+        h1.participantDecision in (Commit + Abort) and h2.participantDecision in (Commit + Abort)
     } => {
         h1.participantDecision = h2.participantDecision
+        h2.participantDecision = d.coordinator.coordDecision
     }
 }
 
 // AC-3: If any host has a No preference, then the decision must be Abort.
 pred ac3[d: DistributedSystem] {
-    some h: d.participants | h.preference = No
+    ((some h: d.participants | h.preference = No) and (all h1: d.participants | d.coordinator.votes[h1] != NoneVote))
     => {
         all h1: d.participants | {
-            h1.participantDecision != NoneDecision 
+            h1.participantDecision in (Abort + Commit)
         } => {
             h1.participantDecision = Abort
             and
@@ -240,7 +246,7 @@ pred ac4[d: DistributedSystem] {
     all h: d.participants | h.preference = Yes
     => {
         all h1: d.participants | {
-            h1.participantDecision != NoneDecision 
+            h1.participantDecision in (Abort + Commit)
         } => {
             h1.participantDecision = Commit and
             (d.coordinator).coordDecision = Commit
@@ -256,33 +262,6 @@ pred safety[d: DistributedSystem] {
     ac4[d]
 }
 
-pred invariant[d: DistributedSystem] {
-    DistributedSystemWF[d] and
-    safety[d] and 
-    (all h1: d.participants | 
-    (((d.coordinator).votes[h1] != NoneVote) => (d.coordinator).votes[h1] = h1.preference)) 
-    and
-    (d.coordinator.msg = Other => ((all h1: d.participants | (d.coordinator.votes[h1] = Yes)
-        =>  (h1.participantDecision = Commit)
-        else (h1.participantDecision = Abort) )))
-    and 
-    (all h1: d.participants | {
-        h1.preference in (Yes + No) 
-    } )
-    and 
-    (all h: d.participants |  no h.lastReceivedRequestFrom  and no d.coordinator.msg => 
-        (d.coordinator.coordDecision = NoneDecision and
-        h.participantDecision = NoneDecision and
-        d.coordinator.votes[h] = NoneVote))  
-    // and 
-    // (all h: d.participants |  
-    //     (d.coordinator.coordDecision = NoneDecision and
-    //     h.participantDecision = NoneDecision and
-    //     d.coordinator.votes[h] = NoneVote 
-    //     ) 
-    //     =>  (no d.coordinator.msg and no h.lastReceivedRequestFrom))  
-}
-
 pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
     coordSendReq[d.coordinator] or
     coordDecide[d.coordinator] or
@@ -290,6 +269,43 @@ pred anyTransition[d: DistributedSystem, ph: ParticipantHost] {
     ptcpLearnDecision[ph] 
     or
     doNothing
+}
+
+pred invariant[d: DistributedSystem] {
+    DistributedSystemWF[d] and
+    safety[d] and 
+    (all h: d.participants | ((d.coordinator).votes[h] != NoneVote => (d.coordinator).votes[h] = h.preference)) 
+    and 
+    (all h: d.participants | h.preference in (Yes + No))
+    // and
+    // (all h: d.participants | h.participantDecision = Commit =>
+    //     (h.lastReceivedRequestFrom = d.coordinator and
+    //     (all h2: d.participants | (d.coordinator.votes[h2] = Yes))))
+    // and
+    // (all h: d.participants | h.participantDecision =  Abort =>
+    //     (h.lastReceivedRequestFrom = d.coordinator and
+    //     (some h2: d.participants | (d.coordinator.votes[h2] = No) and 
+    //     (all h1: d.participants | (d.coordinator.votes[h1]) != NoneVote))))
+
+    and (all h: d.participants | no h.lastReceivedRequestFrom 
+        => h.participantDecision = NoneDecision and
+            d.coordinator.votes[h] = NoneVote and
+            d.coordinator.coordDecision = InitNoneDecision)
+    and (all h: d.participants | h.lastReceivedRequestFrom = d.coordinator 
+        => d.coordinator.coordDecision != InitNoneDecision and 
+                h.participantDecision != InitNoneDecision)
+    // and
+    // (d.coordinator.coordDecision = Commit =>
+    //     (ParticipantHost.lastReceivedRequestFrom = d.coordinator and
+    //     (all h: d.participants | d.coordinator.votes[h] = Yes)))
+    // and
+    // (d.coordinator.coordDecision = Abort =>
+    //     (ParticipantHost.lastReceivedRequestFrom = d.coordinator and
+    //     (some h: d.participants | d.coordinator.votes[h] = No) and (all h1: d.participants | d.coordinator.votes[h1] != NoneVote)))
+    // and
+    // (all h: d.participants | h.participantDecision in (Abort + Commit) =>
+    //     d.coordinator.coordDecision = h.participantDecision)
+
 }
 
 option max_tracelength 2
@@ -303,10 +319,10 @@ test expect {
     inductiveStep: {
         (some ph: DistributedSystem.participants | { 
             // anyTransition[DistributedSystem, ph] 
-            coordSendReq[DistributedSystem.coordinator] 
+            // coordSendReq[DistributedSystem.coordinator] 
             // coordDecide[DistributedSystem.coordinator] 
             // ptcpVote[ph] 
-            // ptcpLearnDecision[ph] 
+            ptcpLearnDecision[ph] 
         }) and
         invariant[DistributedSystem] and
         not next_state invariant[DistributedSystem] 
@@ -341,7 +357,7 @@ test expect {
 //             or 
 //             {
 //                 step = CoordDecideStep and 
-//                 (no ptcpHost: ParticipantHost | (DistributedSystem.coordinator).votes[ptcpHost] = NoneVote) and
+//                 // (no ptcpHost: ParticipantHost | (DistributedSystem.coordinator).votes[ptcpHost] = NoneVote) and
 //                 coordDecide[DistributedSystem.coordinator]
 //             }
 //             or
