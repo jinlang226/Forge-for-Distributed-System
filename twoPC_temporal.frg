@@ -34,11 +34,13 @@ abstract sig Vote {}
 one sig NoneVote, Yes, No extends Vote {} 
 
 abstract sig Decision {}
-// jw: I added a `InitNoneDecision` below to represent the initial state. 
-// This is because I need to distinguish between the initial state and VoteReqStep. 
-// Otherwise, forge seems have trouble to prove the InitStep
+// jw: I added an InitNoneDecision below to represent the initial state. 
+// This is because I need to distinguish between the initial state and the VoteReqStep. 
+// Otherwise, Forge seems to have trouble proving the InitStep, 
+// since the states of all other variables are the same -— NoneVotes and NoneDecisions
 one sig InitNoneDecision, NoneDecision, Commit, Abort extends Decision {} 
 -- Steps of the protocol
+
 abstract sig Steps {}
 one sig CoordSendReqStep, CoordLearnVoteStep, CoordDecideStep, 
         PtcpVoteStep, PtcpLearnDecisionStep extends Steps {}
@@ -86,8 +88,8 @@ pred coordWellformed[h: CoordinatorHost] {
 
 pred coordInit[v: CoordinatorHost] {
     -- This "lookup" is a join that asks for the set of votes for *all* ParticipantHosts
-    v.votes[ParticipantHost] = NoneVote // No votes recorded yet
-    v.coordDecision = InitNoneDecision // No decision recorded yet
+    v.votes[ParticipantHost] = NoneVote 
+    v.coordDecision = InitNoneDecision //jw: the initial state here
 }
 
 // STEP 1
