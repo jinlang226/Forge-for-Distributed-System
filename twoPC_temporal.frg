@@ -74,7 +74,6 @@ pred DistributedSystemInit[d: DistributedSystem] {
 
 -- CoordinatorHost
 ---------------------------------------------------------------------------------
-
 -- In temporal mode, this is a stable entity, but some of its fields are `var`iable over time.
 sig CoordinatorHost {
     participantCount: one Int,  -- not variable
@@ -270,7 +269,6 @@ pred invariant[d: DistributedSystem] {
         (no ptcpHost: ParticipantHost | d.coordinator.votes[ptcpHost] = NoneVote) and 
         (not (all ptcpHost: ParticipantHost | d.coordinator.votes[ptcpHost] = Yes))
         ))
-    
     and (all h: d.participants | h.lastReceivedRequestFrom != d.coordinator
         => h.participantDecision = NoneDecision and
             d.coordinator.votes[h] = NoneVote and
@@ -317,6 +315,23 @@ test expect {
     is unsat
 }
 
+option max_tracelength 20
+test expect  {
+    testLiveness : {
+        DistributedSystemInit[DistributedSystem]
+        always {
+             (some ph: DistributedSystem.participants | { 
+                anyTransition[DistributedSystem, ph] 
+            }) 
+        }
+        eventually {all ph: DistributedSystem.participants | ph.participantDecision in (Abort + Commit)}
+    } is sat
+   
+}  -- We no longer need the "is linear"
+// what proof we could do liveness
+
+
+// visualization
 // option max_tracelength 20
 // run {
 //     -- Start in an initial state (there's only one DistributedSystem, so we can use the type name safely)
@@ -350,6 +365,4 @@ test expect {
 //     }
 
 //     eventually {all ph: DistributedSystem.participants | ph.participantDecision in (Abort + Commit)} 
-//     -- Make sure we didn't break something!
-//     // # ParticipantHost =3 
 // }  -- We no longer need the "is linear"
