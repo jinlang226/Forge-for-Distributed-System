@@ -291,6 +291,7 @@ pred invariant[d: DistributedSystem] {
         d.coordinator.coordDecision = h.participantDecision)
 }
 
+/*å
 option max_tracelength 2
 test expect {
     initStep: { 
@@ -328,7 +329,34 @@ test expect  {
     } is sat
    
 }  -- We no longer need the "is linear"
-// what proof we could do liveness
+*/
+
+
+
+// Since the model is temporal now, 
+// we can encode it using temporal operators such as `always` and `eventually`. 
+// So if the goal is something like seeing a return to an initial state infinitely often, you might write: 
+
+// `always { eventually { all v:  ParticipantHost] | ptcpInit[v]}}`
+
+// This won't be satisfied by the current model, of course. 
+// And I'm not sure it's "the right property". 
+// But you can ask Forge to verify it with a test-expect or an assert: 
+
+test expect { 
+    liveness_check: { 
+      -- (Fill in) start in initial state 
+        DistributedSystemInit[DistributedSystem]
+      -- (Fill in) `always` use a transition in every state
+        always {
+            (some ph: DistributedSystem.participants | anyTransition[DistributedSystem, ph]) 
+        }
+        implies
+        always { eventually { all v:  ParticipantHost | ptcpInit[v]}}
+    }
+    is sat
+}
+
 
 
 // visualization
