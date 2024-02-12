@@ -342,7 +342,7 @@ test expect  {
 // This won't be satisfied by the current model, of course. 
 // And I'm not sure it's "the right property". 
 // But you can ask Forge to verify it with a test-expect or an assert: 
-
+option max_tracelength 20
 test expect { 
     liveness_check: { 
       -- (Fill in) start in initial state 
@@ -353,6 +353,33 @@ test expect {
         }
         implies
         always { eventually { all v:  ParticipantHost | ptcpInit[v]}}
+    }
+    is sat
+
+    liveness_check1: { 
+      -- (Fill in) start in initial state 
+        DistributedSystemInit[DistributedSystem]
+      -- (Fill in) `always` use a transition in every state
+        always {
+            (some ph: DistributedSystem.participants | anyTransition[DistributedSystem, ph]) 
+        }
+        implies
+        // always { eventually { all v:  ParticipantHost | ptcpInit[v]}}
+        always eventually {all ph: DistributedSystem.participants | ph.participantDecision in (Abort + Commit)} 
+
+    }
+    is sat
+
+    liveness_check2: { 
+      -- (Fill in) start in initial state 
+        DistributedSystemInit[DistributedSystem]
+      -- (Fill in) `always` use a transition in every state
+        always {
+            (some ph: DistributedSystem.participants | anyTransition[DistributedSystem, ph]) 
+        }
+        implies
+        // always { eventually { all v:  ParticipantHost | ptcpInit[v]}}
+        always eventually {all ph: DistributedSystem.participants | Coordinator.vote[ph] in (Yes + No)} 
     }
     is sat
 }
