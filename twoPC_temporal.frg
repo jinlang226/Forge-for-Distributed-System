@@ -291,29 +291,29 @@ pred invariant[d: DistributedSystem] {
         d.coordinator.coordDecision = h.participantDecision)
 }
 
-/*å
+
 option max_tracelength 2
 test expect {
     initStep: { 
         DistributedSystemInit[DistributedSystem]
-        not invariant[DistributedSystem]
+        implies invariant[DistributedSystem]
     } 
-    is unsat
+    is theorem
 
     inductiveStep: {
         (some ph: DistributedSystem.participants | { 
             anyTransition[DistributedSystem, ph] 
         }) and
-        invariant[DistributedSystem] and
-        not next_state invariant[DistributedSystem] 
+        invariant[DistributedSystem] 
+        implies next_state invariant[DistributedSystem] 
     } 
-    is unsat
+    is theorem
 
     invImpliesSafety: { 
-        invariant[DistributedSystem] and
-        not safety[DistributedSystem] 
+        invariant[DistributedSystem] 
+        implies safety[DistributedSystem] 
     }
-    is unsat
+    is theorem
 }
 
 option max_tracelength 20
@@ -329,7 +329,7 @@ test expect  {
     } is sat
    
 }  -- We no longer need the "is linear"
-*/
+
 
 
 
@@ -365,23 +365,23 @@ test expect {
         }
         implies
         // always { eventually { all v:  ParticipantHost | ptcpInit[v]}}
-        always eventually {all ph: DistributedSystem.participants | ph.participantDecision in (Abort + Commit)} 
+        eventually always {all ph: DistributedSystem.participants | ph.participantDecision in (Abort + Commit)} 
 
     }
     is sat
 
-    liveness_check2: { 
-      -- (Fill in) start in initial state 
-        DistributedSystemInit[DistributedSystem]
-      -- (Fill in) `always` use a transition in every state
-        always {
-            (some ph: DistributedSystem.participants | anyTransition[DistributedSystem, ph]) 
-        }
-        implies
-        // always { eventually { all v:  ParticipantHost | ptcpInit[v]}}
-        always eventually {all ph: DistributedSystem.participants | Coordinator.vote[ph] in (Yes + No)} 
-    }
-    is sat
+    // liveness_check2: { 
+    //   -- (Fill in) start in initial state 
+    //     DistributedSystemInit[DistributedSystem]
+    //   -- (Fill in) `always` use a transition in every state
+    //     always {
+    //         (some ph: DistributedSystem.participants | anyTransition[DistributedSystem, ph]) 
+    //     }
+    //     implies
+    //     // always { eventually { all v:  ParticipantHost | ptcpInit[v]}}
+    //     eventually always {all ph: DistributedSystem.participants | Coordinator.vote[ph] in (Yes + No)} 
+    // }
+    // is sat
 }
 
 
