@@ -32,31 +32,20 @@ one sig HoldsLockTrue, HoldsLockFalse extends HoldsLock {}
 // }
 
 one sig DistributedSystem {
-    hosts: set Host//,
+    hosts: set Host
 }
 
 pred DistributedSystemInit[d: DistributedSystem] {
-    // DistributedSystemWF[d] 
-    # d.hosts = 3
+    DistributedSystemWF[d] 
     all h: d.hosts | #d.hosts.holdsLock & HoldsLockTrue = 1
     all h: d.hosts | HostInit[h]
-    // exists h | h.holdsLock = HoldsLockTrue and h.epoch = 1
-    
 }
 
-// pred DistributedSystemWF[d: DistributedSystem] {
-      // host and network constants have the correct parameters from the global
-      // distributed system
-    //   && (forall id | ValidHostId(id) ::
-    //         // every host knows its id (and ids are unique)
-    //         && hosts[id].c.numHosts == |hosts|
-    //         && hosts[id].c.myId == id)
+pred DistributedSystemWF[d: DistributedSystem] {
+    # d.hosts = 3
+    // all h: d.hosts | HostWF[h]
     //   && network.c.numHosts == |hosts|
-    // all h : d.hosts | validHostId[h.myId] 
-    //     implies (h.)
-    // (d.hosts).numHosts = 3
-    // # d.hosts = 3
-// }
+}
 
 sig Host {
     // numHosts: one Int, //Constant
@@ -67,17 +56,17 @@ sig Host {
 }
 
 pred HostInit[h: Host] {
+    HostWF[h]
     (h.holdsLock = HoldsLockTrue)
         =>  (h.epoch = 1)
         else (h.holdsLock = HoldsLockFalse and h.epoch = 0)
-    // exists h | h.holdsLock = HoldsLockTrue and h.epoch = 1
-    // #g.holdsLock & True = 1 
     no h.lastReceivedRequestFrom
 }
 
-// pred HostWF[h: Host] {
-//     h.numHosts = # DistributedSystem.hosts
-// }
+pred HostWF[h: Host] {
+    h.holdsLock = HoldsLockTrue
+        implies (all h1: DistributedSystem.hosts-h | h.epoch > h1.epoch)
+}
 
 pred validHostId[id : Int] {
     id >= 0 && id < # DistributedSystem.hosts
@@ -116,8 +105,9 @@ pred doGrant[h: Host] {
 //   }
 
 pred doAccept[h: Host] {
-    h.epoch' > h.epoch
-    h'.holdsLock = HoldsLockTrue
+    h.epoch' > h.epoch  
+    (h.holdsLock)' = HoldsLockTrue
+    h.holdsLock in (HoldsLockTrue + HoldsLockFalse)
     frameNoOtherHostChange[h]
 }
 
@@ -129,19 +119,25 @@ pred frameNoOtherHostChange[h: Host] {
 }
 
 // visualization
-option max_tracelength 2
+option max_tracelength 10
 run {
     DistributedSystemInit[DistributedSystem]
     // always {
-        // some step: HostSteps| { 
-        //     {
-        //         step = DoGrantStep and {some h: DistributedSystem.hosts |  {doGrant[h]}}
-        //     }
-            // or 
-            // {
-            //     step = DoAcceptStep and {some h: DistributedSystem.hosts |  {doAccept[h]}}
-            // } 
-        // } 
+    //     some step: HostSteps| { 
+    //         {
+    //             step = DoGrantStep and {some h: DistributedSystem.hosts |  {doGrant[h]}}
+    //         }
+    //         or 
+    //         {
+    //             step = DoAcceptStep and {some h: DistributedSystem.hosts |  {doAccept[h]}}
+    //         } 
+    //     } 
     // }
+    always DistributedSystemWF[DistributedSystem]
+    some h: DistributedSystem.hosts |  {doAccept[h]} 
+    // next_state {
+    //     some h: DistributedSystem.hosts |  {doGrant[h]} 
+    // }
+    
     // eventually {some dh: DistributedSystem.hosts |  dh.holdsLock = 1 and dh.epoch >= 1} 
 }  
