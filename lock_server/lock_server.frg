@@ -129,6 +129,9 @@ pred doAccept[h: Host] {
     h.epoch' > h.epoch  
     (h.holdsLock)' = HoldsLockTrue
     h.holdsLock in (HoldsLockTrue + HoldsLockFalse)
+    all v: Host-h | {
+        v.holdsLock = HoldsLockFalse
+    } 
     frameNoOtherHostChange[h]
 }
 
@@ -146,31 +149,32 @@ run {
     // always {
     //     some step: HostSteps| { 
     //         {
-    //             step = DoGrantStep 
-    //             and (some h: DistributedSystem.hosts |  {doGrant[h]} )
+    //             step = DoGrantStep and (some h: DistributedSystem.hosts |  {doGrant[h]} )
     //             // and 
     //             // {some h1, h2: DistributedSystem.hosts |  
     //             //     {doGrant[h1] and h2 = DoGrantStep.recipient}
     //             // }
     //         }
-    //         // or 
-    //         // {
-    //         //     step = DoAcceptStep and {some h: DistributedSystem.hosts |  {doAccept[h]}}
-    //         // } 
+    //         or 
+    //         {
+    //             step = DoAcceptStep and {some h: DistributedSystem.hosts |  {doAccept[h]}}
+    //         } 
     //     } 
+    //     DistributedSystemWF[DistributedSystem]
     // }
-    always DistributedSystemWF[DistributedSystem]
-    some h1, h2: DistributedSystem.hosts |  {doGrant[h1] } 
-    next_state {
-        some h: DistributedSystem.hosts |  {doAccept[h]} 
-    }
-    next_state next_state{
-        some h: DistributedSystem.hosts |  {doGrant[h]} 
-    }
-    next_state next_state next_state {
-        some h: DistributedSystem.hosts |  {doAccept[h]} 
-    }
+    // always DistributedSystemWF[DistributedSystem]
+    // some h: DistributedSystem.hosts |  {doAccept[h]} 
+    some h1, h2: DistributedSystem.hosts |  {doAccept[h1] } 
+    // next_state {
+    //     some h: DistributedSystem.hosts |  {doAccept[h]} 
+    // }
+    // next_state next_state{
+    //     some h: DistributedSystem.hosts |  {doGrant[h]} 
+    // }
+    // next_state next_state next_state {
+    //     some h: DistributedSystem.hosts |  {doAccept[h]} 
+    // }
     
     
-    // eventually {some dh: DistributedSystem.hosts |  dh.holdsLock = 1 and dh.epoch >= 1} 
+    // eventually {some dh: DistributedSystem.hosts |  dh.holdsLock = HoldsLockTrue and dh.epoch >= 1} 
 }  
