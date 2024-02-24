@@ -24,52 +24,39 @@ one sig DoGrantStep extends HostSteps {
 abstract sig HoldsLock {}
 one sig HoldsLockTrue, HoldsLockFalse extends HoldsLock {}
 
-// one sig MessageOps {
-//     send: lone Message,
-//     recv: lone Message
-// }
+one sig Network {
+    msg: set Message
+}
 
-// sig Message {
-//     dest: lone Int,
-//     msgEpoch: lone Int
-// }
+sig Message {
+    dest: lone Host,
+    msgEpoch: lone Int
+}
 
 one sig DistributedSystem {
-    hosts: set Host//,
-    // network: one Network
+    hosts: set Host,
+    network: one Network
 }
 
 pred DistributedSystemInit[d: DistributedSystem] {
     # d.hosts = # Host
     # Host = 3
     all h: d.hosts | HostWF[h]
-    all h: d.hosts | #d.hosts.holdsLock & HoldsLockTrue = 1 
+    one h: d.hosts | (h.holdsLock = HoldsLockTrue and Network.msg.dest = h) // all h: d.hosts | #d.hosts.holdsLock & HoldsLockTrue = 1 
     all h: d.hosts | HostInit[h]
-    // NetworkInit[d.network]
+    NetworkInit[d.network]
     no DoGrantStep.recipient 
 }
 
 pred DistributedSystemWF[d: DistributedSystem] {
-    all h: d.hosts | #d.hosts.holdsLock & HoldsLockTrue <= 1
+    lone h: d.hosts | h.holdsLock = HoldsLockTrue  // all h: d.hosts | #d.hosts.holdsLock & HoldsLockTrue <= 1
     # d.hosts = # Host
     # Host = 3
     all h: d.hosts | HostWF[h]
-    // all h: d.hosts | HostWF[h]
-    //   && network.c.numHosts == |hosts|
+    # Network.msg = # Message
 }
 
-
-// sig Network {
-//     var sentMsg: set Message//?
-// }
-
-// pred NetworkInit[n: Network] {
-//     no n.sentMsg
-// }
-
 sig Host {
-    // numHosts: one Int, //Constant
-    // myId: one Int, //Constant
     var holdsLock: one HoldsLock,
     var epoch: one Int
 }
@@ -79,6 +66,13 @@ pred HostInit[h: Host] {
     (h.holdsLock = HoldsLockTrue)
         =>  (h.epoch = 1)
         else (h.holdsLock = HoldsLockFalse and h.epoch = 0)
+}
+
+pred NetworkInit[n: network] {
+    Network.msg.msgEpoch = -1
+    # Network.msg = 1
+    # Message = 1
+    // no n.msg
 }
 
 pred HostWF[h: Host] {
@@ -104,18 +98,33 @@ pred validHostId[id : Int] {
     // var holdsLock: one bool, 
     // var epoch: one Int
 //   }
+
+// pred 
+
+// STEP 1
 pred doGrant[h: Host] {
     h.holdsLock = HoldsLockTrue
     h.holdsLock' = HoldsLockFalse
     h.epoch' = h.epoch
     frameNoOtherHostChange[h]
     (all h1: DistributedSystem.hosts-h | h1.epoch < h.epoch)
-    // no MessageOps.recv
-    // some h1: Host | MessageOps.send.dest = h1
-    // some h: Host | Message.dest' = h
-    // Message.msgEpoch' = h.epoch
-    // Network.sentMsg' = Network.sentMsg + Message
+    Network.msg = Network.msg'
 } 
+
+pred sendMsg {
+    //with the effect of adding the message to the network
+    all v: Host | {
+        v.holdsLock' = v.holdsLock 
+        v.epoch' = v.epoch 
+    }
+    some m: Message | (((all h :Host | m.msgEpoch > h.epoch) and (m.dest in DistributedSystem.hosts)) and
+        Network.msg + m  = Network.msg') //jw: how to add a message?
+}
+
+// pred recvMsg[n: Network] {
+//     //with the guard that the message must be on the network
+//     all h: d.hosts | #d.hosts.holdsLock & HoldsLockTrue = 1 
+// }
 
 //   ghost predicate DoAccept(v:Variables, v':Variables, msgOps:Network.MessageOps<Message>, step: Step)
 //     requires step.DoAcceptStep?
@@ -129,7 +138,8 @@ pred doGrant[h: Host] {
 //   }
 
 pred doAccept[h: Host] {
-    h.epoch' > h.epoch  
+    h.epoch' = add[h.epoch, 2] // jw: It is ideal to add to message 
+    // h.epoch' > h.epoch
     all h1: DistributedSystem.hosts-h | h1.epoch < h.epoch'
     (h.holdsLock)' = HoldsLockTrue
     h.holdsLock = HoldsLockFalse
@@ -181,20 +191,28 @@ run {
         DistributedSystemWF[DistributedSystem]
     }
 
-    // always DistributedSystemWF[DistributedSystem]
-    some h: DistributedSystem.hosts |  {doGrant[h]} 
+    always DistributedSystemWF[DistributedSystem]
+    // some h: DistributedSystem.hosts |  
+    // {
+    //     //next_state {x and {next_state {y and {next_state {...}}}}}
+    //     doGrant[h]
+    //     and {
+    //         next_state {
+    //             sendMsg
+    //         }
+    //     }
+    // } 
     // // // some h1, h2: DistributedSystem.hosts |  {doAccept[h1] } 
-    next_state {
-        some h: DistributedSystem.hosts |  {doAccept[h]} 
-    }
-    next_state next_state{
-        some h: DistributedSystem.hosts |  {doGrant[h]} 
-    }
-    next_state next_state next_state {
-        some h: DistributedSystem.hosts |  {doAccept[h]} 
-    }
+    // next_state {
+    //     some h: DistributedSystem.hosts |  {doAccept[h]} 
+    // }
+    // next_state next_state{
+    //     some h: DistributedSystem.hosts |  {doGrant[h]} 
+    // }
+    // next_state next_state next_state {
+    //     some h: DistributedSystem.hosts |  {doAccept[h]} 
+    // }
     
     
     eventually {some dh: DistributedSystem.hosts |  (dh.holdsLock = HoldsLockTrue and dh.epoch > 1)} 
-    
 }  
