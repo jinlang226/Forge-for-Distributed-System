@@ -66,10 +66,10 @@ pred HostInit[h: Host] {
 }
 
 pred NetworkInit[n: network] {
-    Network.msg.msgEpoch = -1
-    # Network.msg = 1
-    # Message = 1
-    // no n.msg
+    // Network.msg.msgEpoch = -1
+    // # Network.msg = 1
+    // # Message = 1
+    n.msg = {} //jw: how to initialize a empty set?
 }
 
 pred HostWF[h: Host] {
@@ -87,7 +87,7 @@ pred doGrant[h: Host] {
     h.epoch' = h.epoch
     frameNoOtherHostChange[h]
     (all h1: DistributedSystem.hosts-h | h1.epoch < h.epoch)
-    // Network.msg = Network.msg'
+    Network.msg = Network.msg'
     // sendMsg[add[h.epoch, 1]]
 } 
 
@@ -96,7 +96,8 @@ pred sendMsg[e: Int] {
     some m: Message | {
         m.msgEpoch = e and
         (one h: DistributedSystem.hosts | m.dest = h) and
-        Network.msg + m  = Network.msg'
+        (Network.msg + m  = Network.msg') and
+        (m not in Network.msg)
     } //jw: how to add a message?
 }
 
