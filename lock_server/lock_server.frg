@@ -33,7 +33,7 @@ sig Message {
 
 one sig DistributedSystem {
     hosts: set Host,
-    network: one Network
+    network: lone Network // no network at the beginning
 }
 
 pred DistributedSystemInit[d: DistributedSystem] {
@@ -66,10 +66,7 @@ pred HostInit[h: Host] {
 }
 
 pred NetworkInit[n: network] {
-    // Network.msg.msgEpoch = -1
-    // # Network.msg = 1
-    // # Message = 1
-    n.msg = {} //jw: how to initialize a empty set?
+    all m: n.msg | m not in n.msg  //jw: initialize a empty set
 }
 
 pred HostWF[h: Host] {
@@ -87,8 +84,8 @@ pred doGrant[h: Host] {
     h.epoch' = h.epoch
     frameNoOtherHostChange[h]
     (all h1: DistributedSystem.hosts-h | h1.epoch < h.epoch)
-    Network.msg = Network.msg'
-    // sendMsg[add[h.epoch, 1]]
+    // Network.msg = Network.msg' //jw: this would work
+    sendMsg[add[h.epoch, 1]] //jw: but this would give UNSAT result
 } 
 
 pred sendMsg[e: Int] {
@@ -111,11 +108,9 @@ pred recvMsg[m: Message] {
 
 pred doAccept[h: Host] {
     some m: Network.msg | (recvMsg[m] and m.dest = h and h'.epoch = m.msgEpoch)
-    // recvMsg[m] 
-    // m.dest = h
-    // h'.epoch = m.msgEpoch
+
     h.epoch < h'.epoch
-    // h.epoch' = add[h.epoch, 2] // jw: It is ideal to add to message 
+    // h.epoch' = add[h.epoch, 2] 
     h.holdsLock = HoldsLockFalse
     h.holdsLock' = HoldsLockTrue
     all v: Host-h | {
@@ -181,7 +176,6 @@ run {
     //             // }
     //         }
     //     }
-    
     // }
     
     // eventually {some dh: DistributedSystem.hosts |  (dh.holdsLock = HoldsLockTrue and dh.epoch > 1)} 
