@@ -23,12 +23,12 @@ abstract sig HoldsLock {}
 one sig HoldsLockTrue, HoldsLockFalse extends HoldsLock {}
 
 one sig Network {
-    msg: set Message
+    var msg: set Message
 }
 
 sig Message {
-    dest: lone Host,
-    msgEpoch: lone Int
+    var dest: lone Host,
+    var msgEpoch: lone Int
 }
 
 one sig DistributedSystem {
@@ -50,7 +50,7 @@ pred DistributedSystemWF[d: DistributedSystem] {
     # d.hosts = # Host
     # Host = 3
     all h: d.hosts | HostWF[h]
-    # Network.msg = # Message
+    // # Network.msg = # Message
 }
 
 sig Host {
@@ -66,7 +66,8 @@ pred HostInit[h: Host] {
 }
 
 pred NetworkInit[n: Network] {
-    all m: n.msg | m not in n.msg  //jw: initialize a empty set
+    // all m: n.msg | m not in n.msg  //jw: initialize a empty set
+    no n.msg
 }
 
 pred HostWF[h: Host] {
@@ -85,35 +86,37 @@ pred doGrant[h: Host] {
     frameNoOtherHostChange[h]
     (all h1: DistributedSystem.hosts-h | h1.epoch < h.epoch)
     // Network.msg = Network.msg' //jw: this would work
-    // sendMsg[add[h.epoch, 1]] //jw: but this would give UNSAT result
-    sendMsg[h.epoch] //jw: but this would give UNSAT result
+    sendMsg[add[h.epoch, 1]] //jw: but this would give UNSAT result
 } 
 
 pred sendMsg[e: Int] {
     //with the effect of adding the message to the network
-    some m: Message | {
-        m.msgEpoch = e and
-        (one h: DistributedSystem.hosts | m.dest = h) and
-        // (Network.msg + m  = Network.msg') and
-        // all x | x in Network.msg' <-> (x in Network.msg | x = m)
-        (all x: Message | x in Network.msg' <=> (x in Network.msg or x = m))  and
-        (m not in Network.msg)
+    one m: Message | {
+        m.msgEpoch' = e 
+        and
+        (one h: DistributedSystem.hosts | m.dest' = h) 
+        and
+        // // (Network.msg + m  = Network.msg') and
+        // // all x | x in Network.msg' <-> (x in Network.msg | x = m)
+        (all x: Message | x in Network.msg' <=> (x in Network.msg or x = m))  
+        //and
+        // (m not in Network.msg)
     } 
 }
 
 pred recvMsg[m: Message] {
     //with the guard that the message must be on the network
     m in Network.msg
-    all h: DistributedSystem.hosts | {
-        m.msgEpoch > h.epoch
-    }
+    // all h: DistributedSystem.hosts | {
+    //     m.msgEpoch > h.epoch
+    // }
 }
 
 pred doAccept[h: Host] {
-    some m: Network.msg | (recvMsg[m] and m.dest = h and h'.epoch = m.msgEpoch)
+    some m: Network.msg | (recvMsg[m] and m.dest = h and h.epoch' = m.msgEpoch)
 
-    h.epoch < h'.epoch
-    // h.epoch' = add[h.epoch, 2] 
+    // h.epoch < h'.epoch
+    h.epoch' = add[h.epoch, 2] 
     h.holdsLock = HoldsLockFalse
     h.holdsLock' = HoldsLockTrue
     all v: Host-h | {
@@ -166,7 +169,11 @@ run {
     // }
 
     always DistributedSystemWF[DistributedSystem]
+    
     some h: DistributedSystem.hosts | doGrant[h]
+    next_state {
+        some h: DistributedSystem.hosts | doAccept[h]
+    }
     // next_state {
     //     x and 
     //     {next_state 
