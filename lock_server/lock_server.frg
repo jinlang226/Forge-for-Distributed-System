@@ -65,7 +65,7 @@ pred HostInit[h: Host] {
         else (h.holdsLock = HoldsLockFalse and h.epoch = 0)
 }
 
-pred NetworkInit[n: network] {
+pred NetworkInit[n: Network] {
     all m: n.msg | m not in n.msg  //jw: initialize a empty set
 }
 
@@ -85,7 +85,8 @@ pred doGrant[h: Host] {
     frameNoOtherHostChange[h]
     (all h1: DistributedSystem.hosts-h | h1.epoch < h.epoch)
     // Network.msg = Network.msg' //jw: this would work
-    sendMsg[add[h.epoch, 1]] //jw: but this would give UNSAT result
+    // sendMsg[add[h.epoch, 1]] //jw: but this would give UNSAT result
+    sendMsg[h.epoch] //jw: but this would give UNSAT result
 } 
 
 pred sendMsg[e: Int] {
@@ -93,9 +94,11 @@ pred sendMsg[e: Int] {
     some m: Message | {
         m.msgEpoch = e and
         (one h: DistributedSystem.hosts | m.dest = h) and
-        (Network.msg + m  = Network.msg') and
+        // (Network.msg + m  = Network.msg') and
+        // all x | x in Network.msg' <-> (x in Network.msg | x = m)
+        (all x: Message | x in Network.msg' <=> (x in Network.msg or x = m))  and
         (m not in Network.msg)
-    } //jw: how to add a message?
+    } 
 }
 
 pred recvMsg[m: Message] {
