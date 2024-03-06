@@ -151,7 +151,9 @@ pred doNothing {
 option max_tracelength 20
 run {
     DistributedSystemInit[DistributedSystem]
-    always {
+    // jw: the epoch number will jump steps. 
+    // For example, epoch number will change from 1 to 3, then to 6, while there is no 4 and 5
+    always { 
         some step: HostSteps| { 
             {
                 step = DoGrantStep and 
@@ -174,6 +176,8 @@ run {
 
     // always DistributedSystemWF[DistributedSystem]
     
+
+    // jw: if I defined steps manually, it will not jump steps
     // some h: DistributedSystem.hosts | doGrant[h]
     // next_state 
     // {
@@ -195,5 +199,5 @@ run {
     //     }
     // }
     
-    eventually {some dh: DistributedSystem.hosts |  (dh.holdsLock = HoldsLockTrue and dh.epoch > 1)} 
+    eventually {some dh: DistributedSystem.hosts |  (dh.holdsLock = HoldsLockTrue and dh.epoch > 3)} 
 }  
