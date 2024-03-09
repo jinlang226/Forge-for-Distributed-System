@@ -86,9 +86,12 @@ pred prepare[d: DistributedSystem, v: Int] {
 }
 
 pred accept[d: DistributedSystem] {
-    // d.proposer.count > 2 
-    //     => 
-    //     else  
+    (no a: d.acceptors | 
+        a.acceptedNumber < d.proposer.proposalNumber
+            => (a.acceptedValue = d.proposer.proposalValue)
+            else //find the value of the largest acceptor ID
+                ((some a: d.acceptors | a.acceptedNumber = max[Acceptor.acceptedNumber] => a.acceptedValue = d.proposer.proposalValue') and
+                (all a: d.acceptors | a.acceptedValue' = d.proposer.proposalValue')))
 }
 
 pred doNothing {
