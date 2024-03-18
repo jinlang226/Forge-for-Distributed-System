@@ -43,6 +43,7 @@ pred DistributedSystemInit[d: DistributedSystem] {
 
 pred DistributedSystemWF[d: DistributedSystem] {
     #Proposer = 1
+    #Acceptor = 3 
 }
 
 sig Acceptor {
@@ -69,36 +70,57 @@ pred initProposer[p: Proposer] {
     p.count = 0 //number of acceptors responded
 }
 
-pred prepare[d: DistributedSystem, v: Value, someAcceptor: Acceptor] { //jw: how to represent a list of accepotor?
-    d.proposer.proposalNumber' = add[d.proposer.proposalNumber, 1]
-    d.proposer.proposalValue' = v 
-    
-    d.proposer.proposalNumber' > someAcceptor.acceptedNumber 
-        => (someAcceptor.acceptedNumber' = d.proposer.proposalNumber' and 
-            someAcceptor.acceptedValue' = v and 
-            d.proposer.count' = add[d.proposer.count, 1] 
-            and someAcceptor.ready' = True
-            )
-        else 
-            (
-            someAcceptor.acceptedNumber' = someAcceptor.acceptedNumber and 
-            someAcceptor.acceptedValue' = someAcceptor.acceptedValue and 
-            d.proposer.count' = d.proposer.count  
-            and someAcceptor.ready' = False
-            )
-    all a: d.acceptors - someAcceptor |
-        a.acceptedNumber' = a.acceptedNumber and
-        a.acceptedValue' = a.acceptedValue and
-        a.ready' = a.ready 
+// Phase 2. 
+// (a) If the proposer receives a response to its prepare requests (numbered n) from 
+//     a majority of acceptors, then it sends an accept request to each of those acceptors 
+//     for a proposal numbered n with a value v, where v is the value of the highest-numbered 
+//     proposal among the responses, or is any value if the responses reported no proposals.
+// (b) If an acceptor receives an accept request for a proposal numbered n, 
+//     it accepts the proposal unless it has already responded to a prepare 
+//     request having a number greater than n.
+
+pred accept[d: DistributedSystem, v: Value] { //jw: how to represent a list of accepotor?
+    d.proposer.proposalNumber' = d.proposer.proposalNumber
+    d.proposer.proposalValue' = v
+    d.proposer.count' = d.proposer.count  
+    all a: d.acceptors | //a.ready = True jw: if exceeds majority
+    //         => (
+                    a.acceptedNumber' = d.proposer.proposalNumber' and 
+                    a.acceptedValue' = d.proposer.proposalValue' and 
+                    a.ready' = a.ready
+            //     )
+            // else 
+            //     (
+            //         a.acceptedNumber' = a.acceptedNumber and 
+            //         a.acceptedValue' = a.acceptedValue and 
+            //         a.ready' = a.ready
+            //     )
 }
 
-pred accept[d: DistributedSystem] {
-    (no a: d.acceptors | 
-        a.acceptedNumber < d.proposer.proposalNumber
-            => (a.acceptedValue = d.proposer.proposalValue)
-            else //find the value of the largest acceptor ID
-                ((some a: d.acceptors | a.acceptedNumber = max[Acceptor.acceptedNumber] => a.acceptedValue = d.proposer.proposalValue') and
-                (all a: d.acceptors | a.acceptedValue' = d.proposer.proposalValue')))
+// Phase 1. 
+// (a) A proposer selects a proposal number n and 
+//     sends a prepare request with number n to 
+//     a majority of acceptors.
+// (b) If an acceptor receives a prepare request with number n greater than 
+//     that of any prepare request to which it has already responded, then it responds to 
+//     the request with a promise not to accept any more proposals numbered less than n and 
+//     with the highest-numbered proposal (if any) that it has accepted.
+
+pred prepare[d: DistributedSystem, someAcceptor: Acceptor] {
+    d.proposer.proposalNumber' = add[d.proposer.proposalNumber, 1]
+    d.proposer.proposalValue' = d.proposer.proposalValue
+    
+    all ac: d.acceptors - someAcceptor | 
+        ac.acceptedNumber' = d.proposer.proposalNumber'and
+        ac.acceptedValue' = ac.acceptedValue and
+        d.proposer.count' = add[d.proposer.count, #ac] and //jw: # is not correct
+        (d.proposer.proposalNumber' > ac.acceptedNumber 
+            => ac.ready' = True
+            else ac.ready' = False)
+    
+    someAcceptor.acceptedNumber' = someAcceptor.acceptedNumber 
+    someAcceptor.acceptedValue' = someAcceptor.acceptedValue
+    someAcceptor.ready' = False
 }
 
 pred doNothing {
@@ -121,10 +143,11 @@ run {
         // } 
         DistributedSystemWF[DistributedSystem]
     }
-    some v: Value | (one a: DistributedSystem.acceptors | prepare[DistributedSystem,v,a])
-    // next_state 
-    // {
-    //     accept[DistributedSystem]
+    // some v: Value | (one a: DistributedSystem.acceptors | prepare[DistributedSystem,v,a])
+    some a: DistributedSystem.acceptors | prepare[DistributedSystem, a] //jw: error if change some to one
+    next_state 
+    {
+        accept[DistributedSystem, valB]
         
     //     some h: DistributedSystem.hosts | doAccept[h] 
     //     and
@@ -142,7 +165,7 @@ run {
     //             }
     //         }
     //     }
-    // }
+    }
     // forall b : b true or b false
     // type error? 
 }  
