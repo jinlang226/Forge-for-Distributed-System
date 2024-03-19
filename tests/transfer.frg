@@ -4,7 +4,7 @@ abstract sig Value{}
 one sig A, B, C extends Value {}
 
 one sig DistributedSystem {
-    v: one Value
+    var v: one Value
 }
 
 pred DistributedSystemInit[d: DistributedSystem] {
@@ -27,7 +27,7 @@ run {
         or 
         doNothing[DistributedSystem]
     }
-    eventually { //will not be UNSAT if comment out `eventually`
+    eventually { 
         DistributedSystem.v = B
     }
 }  

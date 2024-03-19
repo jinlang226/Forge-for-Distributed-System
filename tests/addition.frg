@@ -1,7 +1,7 @@
 #lang forge/temporal 
 
 one sig DistributedSystem {
-    n: one Int
+    var n: one Int
 }
 
 pred DistributedSystemInit[d: DistributedSystem] {
@@ -25,7 +25,7 @@ run {
         or 
         doNothing[DistributedSystem]
     }
-    eventually { //will not be UNSAT if comment out `eventually`
+    eventually {
         DistributedSystem.n = 6
     }
 }  
