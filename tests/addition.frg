@@ -25,6 +25,10 @@ run {
         or 
         doNothing[DistributedSystem]
     }
+    plusOne[DistributedSystem]
+    eventually {
+        DistributedSystem.n = 3
+    }
     eventually {
         DistributedSystem.n = 6
     }
