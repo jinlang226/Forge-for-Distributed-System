@@ -51,7 +51,7 @@ test expect {
 }
 
 option max_tracelength 10
-// expected: v A to any value in several steps, and eventually stays at v = B
+// expected: v = A to any value in several steps, and eventually stays at v = B
 // behavior: v changes from A to B, and stays at B forever
 run {
     DistributedSystemInit[DistributedSystem]
