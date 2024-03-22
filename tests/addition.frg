@@ -19,7 +19,9 @@ pred doNothing[d: DistributedSystem] {
 
 option max_tracelength 20
 test expect { 
-    add: { 
+    // expected: the example should be SAT with the doNothing transition
+    // result: SAT as expected
+    addWithDoNothing: { 
         DistributedSystemInit[DistributedSystem]
         always {
             plusOne[DistributedSystem]
@@ -31,21 +33,35 @@ test expect {
         }
     }
     is sat
+
+    // expected: the example should be UNSAT without the doNothing transition
+    // result: gives me counter example, with n increase from 0, 1, 2, ..., 7, -8, -7, ..., -1, and then loop back to 0
+    addWithoutDoNothing: { 
+        DistributedSystemInit[DistributedSystem]
+        always {
+            plusOne[DistributedSystem]
+        }
+        eventually { 
+            DistributedSystem.n = 6
+        }
+    }
+    is unsat
 }
 
-// option max_tracelength 10
-// run {
-//     DistributedSystemInit[DistributedSystem]
-//     always {
-//         plusOne[DistributedSystem]
-//         or 
-//         doNothing[DistributedSystem]
-//     }
-//     plusOne[DistributedSystem]
-//     eventually {
-//         DistributedSystem.n = 3
-//     }
-//     eventually {
-//         DistributedSystem.n = 6
-//     }
-// }  
+option max_tracelength 10
+// result: SAT, the model goes 0, 1, 6, 3
+run {
+    DistributedSystemInit[DistributedSystem]
+    always {
+        plusOne[DistributedSystem]
+        or 
+        doNothing[DistributedSystem]
+    }
+    plusOne[DistributedSystem]
+    eventually {
+        DistributedSystem.n = 3
+    }
+    eventually {
+        DistributedSystem.n = 6
+    }
+}  

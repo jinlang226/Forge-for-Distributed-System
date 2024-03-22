@@ -21,7 +21,9 @@ pred doNothing[d: DistributedSystem] {
 
 option max_tracelength 20
 test expect { 
-    succ: { 
+    // expected: the example should be SAT with the doNothing transition
+    // the behavior: SAT as expected
+    succWithDoNothing: { 
         DistributedSystemInit[DistributedSystem]
         always {
             transfer[DistributedSystem]
@@ -33,6 +35,19 @@ test expect {
         }
     }
     is sat
+
+    // expected: the example should be UNSAT without the doNothing transition
+    // the behavior: gives me counter example, with v changes from A to B, and stays at B forever
+    succWithoutDoNothing: { 
+        DistributedSystemInit[DistributedSystem]
+        always {
+            transfer[DistributedSystem]
+        }
+        eventually { 
+            DistributedSystem.v = B
+        }
+    }
+    is unsat 
 }
 
 // option max_tracelength 10
