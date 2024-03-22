@@ -51,8 +51,8 @@ test expect {
 option max_tracelength 10
 
 
-// expected: SAT with n increasing from 0 to 6
-// result: SAT, but the model goes 0, 1, 6, 3
+// expected: SAT with a trace 0, 1, 2, 3, 4, 5, 6
+// result: SAT, but the model goes 0, 6
 run {
     DistributedSystemInit[DistributedSystem]
     always {
@@ -60,10 +60,6 @@ run {
         or 
         doNothing[DistributedSystem]
     }
-    // plusOne[DistributedSystem]
-    // eventually {
-    //     DistributedSystem.n = 3
-    // }
     eventually {
         DistributedSystem.n = 6
     }
