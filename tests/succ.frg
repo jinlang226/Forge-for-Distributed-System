@@ -11,7 +11,7 @@ pred DistributedSystemInit[d: DistributedSystem] {
     d.v = A
 }
 
-pred transfer[d: DistributedSystem] {
+pred succ[d: DistributedSystem] {
     d.v' in Value
 }
 
@@ -26,7 +26,7 @@ test expect {
     succWithDoNothing: { 
         DistributedSystemInit[DistributedSystem]
         always {
-            transfer[DistributedSystem]
+            succ[DistributedSystem]
             or 
             doNothing[DistributedSystem]
         }
@@ -41,7 +41,7 @@ test expect {
     succWithoutDoNothing: { 
         DistributedSystemInit[DistributedSystem]
         always {
-            transfer[DistributedSystem]
+            succ[DistributedSystem]
         }
         eventually { 
             DistributedSystem.v = B
@@ -50,15 +50,17 @@ test expect {
     is unsat 
 }
 
-// option max_tracelength 10
-// run {
-//     DistributedSystemInit[DistributedSystem]
-//     always {
-//         transfer[DistributedSystem]
-//         or 
-//         doNothing[DistributedSystem]
-//     }
-//     eventually { 
-//         DistributedSystem.v = B
-//     }
-// }  
+option max_tracelength 10
+// expected: v A to any value in several steps, and eventually stays at v = B
+// behavior: v changes from A to B, and stays at B forever
+run {
+    DistributedSystemInit[DistributedSystem]
+    always {
+        succ[DistributedSystem]
+        or 
+        doNothing[DistributedSystem]
+    }
+    eventually { 
+        DistributedSystem.v = B
+    }
+}  
