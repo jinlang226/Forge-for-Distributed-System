@@ -49,7 +49,8 @@ test expect {
 }
 
 option max_tracelength 10
-// result: SAT, the model goes 0, 1, 6, 3
+// expected: SAT with n increasing from 0 to 6
+// result: SAT, but the model goes 0, 1, 6, 3
 run {
     DistributedSystemInit[DistributedSystem]
     always {
