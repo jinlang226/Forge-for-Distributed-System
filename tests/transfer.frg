@@ -21,7 +21,7 @@ pred doNothing[d: DistributedSystem] {
 
 option max_tracelength 20
 test expect { 
-    add: { 
+    succ: { 
         DistributedSystemInit[DistributedSystem]
         always {
             transfer[DistributedSystem]
