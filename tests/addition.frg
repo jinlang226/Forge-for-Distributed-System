@@ -14,7 +14,7 @@ pred plusOne[d: DistributedSystem] {
 
 
 pred doNothing[d: DistributedSystem] {
-    d = d'
+    d.n = d.n'
 }
 
 option max_tracelength 20

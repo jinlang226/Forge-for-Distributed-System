@@ -16,7 +16,7 @@ pred succ[d: DistributedSystem] {
 }
 
 pred doNothing[d: DistributedSystem] {
-    d = d'
+    d.v = d.v'
 }
 
 option max_tracelength 10
