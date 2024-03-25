@@ -70,6 +70,32 @@ pred initProposer[p: Proposer] {
     p.count = 0 //number of acceptors responded
 }
 
+// Phase 1. 
+// (a) A proposer selects a proposal number n and 
+//     sends a prepare request with number n to 
+//     a majority of acceptors.
+// (b) If an acceptor receives a prepare request with number n greater than 
+//     that of any prepare request to which it has already responded, then it responds to 
+//     the request with a promise not to accept any more proposals numbered less than n and 
+//     with the highest-numbered proposal (if any) that it has accepted.
+
+pred prepare[d: DistributedSystem, someAcceptor: Acceptor] {
+    d.proposer.proposalNumber' = add[d.proposer.proposalNumber, 1]
+    d.proposer.proposalValue' = d.proposer.proposalValue
+    
+    all ac: d.acceptors - someAcceptor | 
+        ac.acceptedNumber' = d.proposer.proposalNumber'and
+        ac.acceptedValue' = ac.acceptedValue and
+        d.proposer.count' = add[d.proposer.count, #ac] and //jw: # is not correct
+        (d.proposer.proposalNumber' > ac.acceptedNumber 
+            => ac.ready' = True
+            else ac.ready' = False)
+    
+    someAcceptor.acceptedNumber' = someAcceptor.acceptedNumber 
+    someAcceptor.acceptedValue' = someAcceptor.acceptedValue
+    someAcceptor.ready' = False
+}
+
 // Phase 2. 
 // (a) If the proposer receives a response to its prepare requests (numbered n) from 
 //     a majority of acceptors, then it sends an accept request to each of those acceptors 
@@ -97,39 +123,28 @@ pred accept[d: DistributedSystem, v: Value] { //jw: how to represent a list of a
             //     )
 }
 
-// Phase 1. 
-// (a) A proposer selects a proposal number n and 
-//     sends a prepare request with number n to 
-//     a majority of acceptors.
-// (b) If an acceptor receives a prepare request with number n greater than 
-//     that of any prepare request to which it has already responded, then it responds to 
-//     the request with a promise not to accept any more proposals numbered less than n and 
-//     with the highest-numbered proposal (if any) that it has accepted.
-
-pred prepare[d: DistributedSystem, someAcceptor: Acceptor] {
-    d.proposer.proposalNumber' = add[d.proposer.proposalNumber, 1]
-    d.proposer.proposalValue' = d.proposer.proposalValue
-    
-    all ac: d.acceptors - someAcceptor | 
-        ac.acceptedNumber' = d.proposer.proposalNumber'and
-        ac.acceptedValue' = ac.acceptedValue and
-        d.proposer.count' = add[d.proposer.count, #ac] and //jw: # is not correct
-        (d.proposer.proposalNumber' > ac.acceptedNumber 
-            => ac.ready' = True
-            else ac.ready' = False)
-    
-    someAcceptor.acceptedNumber' = someAcceptor.acceptedNumber 
-    someAcceptor.acceptedValue' = someAcceptor.acceptedValue
-    someAcceptor.ready' = False
-}
-
 pred doNothing {
-    
+    all a: Acceptors | {
+        a.acceptedNumber' = a.acceptedNumber
+        a.acceptedValue' = a.acceptedValue
+        a.ready' = a.ready
+    }
+    all p: Proposer | {
+        p.proposalNumber' = p.proposalNumber
+        p.proposalValue' = p.proposalValue
+        p.count' = p.count
+    }
 }
 
 
 // visualization
 option max_tracelength 20
+option solver MiniSatProver -- the only solver we support that extracts cores
+option logtranslation 1 -- enable translation logging
+option coregranularity 1 -- tell the solver how granular cores should be
+option core_minimization rce -- tell the solver which algorithm to use to reduce core size
+-- valid values: hybrid (fast, not always minimal),
+-- rce (slower, complete)
 run {
     DistributedSystemInit[DistributedSystem]
     always { 
