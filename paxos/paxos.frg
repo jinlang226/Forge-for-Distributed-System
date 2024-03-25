@@ -159,8 +159,17 @@ pred doNothing {
     }
 }
 
+pred anyTransition[d: DistributedSystem, a: Acceptor] {
+    prepare[d, a]
+    or
+    accept[d, valB]
+    or
+    decide[d]
+    or
+    doNothing
+}
 
--- visualization
+
 option max_tracelength 20
 option solver MiniSatProver -- the only solver we support that extracts cores
 option logtranslation 1 -- enable translation logging
@@ -168,46 +177,97 @@ option coregranularity 1 -- tell the solver how granular cores should be
 option core_minimization rce -- tell the solver which algorithm to use to reduce core size
 -- valid values: hybrid (fast, not always minimal),
 -- rce (slower, complete)
-run {
-    DistributedSystemInit[DistributedSystem]
-    always { 
-        some step: Steps| { 
-            {
-                step = prepareStep and 
-                (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
-            }
-            or
-            {
-                step = acceptStep and 
-                accept[DistributedSystem, valB]
-            }
-            or
-            {
-                step = decideStep and 
-                decide[DistributedSystem]
-            }
-            or
-            {doNothing}
-        } 
-        DistributedSystemWF[DistributedSystem]
+
+
+pred safety[d: DistributedSystem] {
+    
+}
+
+pred invariant[d: DistributedSystem] {
+    
+}
+
+test expect {
+    initStep: { 
+        DistributedSystemInit[DistributedSystem]
+        implies invariant[DistributedSystem]
+    } 
+    is theorem
+
+    inductiveStep: {
+        (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem, a]) and
+        invariant[DistributedSystem] 
+        implies next_state invariant[DistributedSystem] 
+    } 
+    is theorem
+
+    invImpliesSafety: { 
+        invariant[DistributedSystem] 
+        implies safety[DistributedSystem] 
     }
-    eventually {some a: DistributedSystem.acceptors | a.acceptedValue = valB}
-    eventually DistributedSystem.finalValue = valB
-    -- manually run the following steps
-    // some a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
-    // next_state 
-    // {
-    //     accept[DistributedSystem, valB]
-    //     and {
-    //         next_state 
-    //         {
-    //             decide[DistributedSystem]
-    //             and {
-    //                 next_state {
-    //                     doNothing
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-}  
+    is theorem
+}
+
+-- test liveness
+// test expect { 
+//     liveness_check: { 
+//       -- (Fill in) start in initial state 
+//         DistributedSystemInit[DistributedSystem]
+//       -- (Fill in) `always` use a transition in every state
+//         always {
+//             (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem, a]) 
+//         }
+//         implies
+//         always {
+//             {eventually {some a: DistributedSystem.acceptors | a.acceptedValue = valB}} and
+//             {eventually DistributedSystem.finalValue = valB}
+//         }
+//     }
+//     is sat
+// }
+
+
+-- visualization
+// run {
+//     DistributedSystemInit[DistributedSystem]
+//     always { 
+//         some step: Steps| { 
+//             {
+//                 step = prepareStep and 
+//                 (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
+//             }
+//             or
+//             {
+//                 step = acceptStep and 
+//                 accept[DistributedSystem, valB]
+//             }
+//             or
+//             {
+//                 step = decideStep and 
+//                 decide[DistributedSystem]
+//             }
+//             or
+//             {doNothing}
+//         } 
+//         DistributedSystemWF[DistributedSystem]
+//     }
+//     eventually {some a: DistributedSystem.acceptors | a.acceptedValue = valB}
+//     eventually DistributedSystem.finalValue = valB
+//     -- manually run the following steps
+//     // some a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
+//     // next_state 
+//     // {
+//     //     accept[DistributedSystem, valB]
+//     //     and {
+//     //         next_state 
+//     //         {
+//     //             decide[DistributedSystem]
+//     //             and {
+//     //                 next_state {
+//     //                     doNothing
+//     //                 }
+//     //             }
+//     //         }
+//     //     }
+//     // }
+// }  
