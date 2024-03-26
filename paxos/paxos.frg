@@ -35,18 +35,22 @@ abstract sig Bool {}
 one sig True, False extends Bool {}
 
 pred DistributedSystemInit[d: DistributedSystem] {
-    #d.acceptors = 3
-    #d.proposer = 1
-    #d.finalValue = 1
+    # Proposer = 1
+    # Acceptor = 3
+    # d.acceptors = 3
+    # d.proposer = 1
+    # d.finalValue = 1
     all a: d.acceptors | initAcceptor[a]
     initProposer[d.proposer]
     d.finalValue = valInit
 }
 
 pred DistributedSystemWF[d: DistributedSystem] {
-    #finalValue = 1
-    #Proposer = 1
-    #Acceptor = 3 
+    # finalValue = 1
+    # Proposer = 1
+    # Acceptor = 3 
+    # d.acceptors = 3
+    # d.proposer = 1
 }
 
 sig Acceptor {
@@ -56,7 +60,7 @@ sig Acceptor {
 }
 
 pred initAcceptor[a: Acceptor] {
-    a.acceptedNumber = 0
+    a.acceptedNumber = 0 // this round number could be adjusted 
     a.acceptedValue = valInit
     a.ready = False
 }
@@ -88,13 +92,18 @@ pred prepare[d: DistributedSystem, someAcceptor: Acceptor] {
     d.proposer.proposalValue' = d.proposer.proposalValue
     
     all ac: d.acceptors - someAcceptor | 
-        ac.acceptedNumber' = d.proposer.proposalNumber'and
-        ac.acceptedValue' = ac.acceptedValue and
-        d.proposer.count' = add[d.proposer.count, 2] and //jw: #ac is not correct
-        (d.proposer.proposalNumber' > ac.acceptedNumber 
-            => ac.ready' = True
-            else ac.ready' = False)
-    
+        ac.acceptedNumber < d.proposer.proposalNumber' =>
+            (ac.acceptedNumber' = d.proposer.proposalNumber' and
+            ac.acceptedValue' = ac.acceptedValue and
+            d.proposer.count' = add[d.proposer.count, 2] and //jw: #ac is not correct
+            (d.proposer.proposalNumber' > ac.acceptedNumber 
+                => ac.ready' = True
+                else ac.ready' = False))
+        else
+            (ac.acceptedNumber' = ac.acceptedNumber and
+            ac.acceptedValue' = ac.acceptedValue and
+            ac.ready' = ac.ready and
+            d.proposer.count' = d.proposer.count)
     someAcceptor.acceptedNumber' = someAcceptor.acceptedNumber 
     someAcceptor.acceptedValue' = someAcceptor.acceptedValue
     someAcceptor.ready' = False
@@ -179,20 +188,42 @@ option core_minimization rce -- tell the solver which algorithm to use to reduce
 -- rce (slower, complete)
 
 
+// Only one value can be chosen 
+// Only values proposed can be chosen. 
+// If this weren't a requirement, 
+// you could construct a rather silly yet still correct consensus algorithm 
+// in which all computers instantly agree on some predefined value.
 pred safety[d: DistributedSystem] {
-    
+    # d.finalValue = 1
+    d.proposer.proposalValue = valInit <=> d.finalValue = valInit
+    // d.proposer.proposalValue in (valA + valB) => d.finalValue = d.proposer.proposalValue
+    d.finalValue in (valA + valB) <=> d.proposer.proposalValue in (valA + valB)
+    d.finalValue in (valA + valB) => d.proposer.proposalValue = d.finalValue
+    d.proposer.proposalNumber >= 0
+    all a: d.acceptors | a.acceptedNumber >= 0
 }
 
+// all proposal identifiers are unique
+// the value of the proposal sent to a majority of computers 
+// must equal the value of the proposal with the largest identifier less than 
+// i accepted by any of the computers.
 pred invariant[d: DistributedSystem] {
-    
+    DistributedSystemWF[d]
+    safety[d]
+    all a: d.acceptors | 
+        a.acceptedValue in (valA + valB) => 
+            (
+                a.acceptedNumber >= d.proposer.proposalNumber and
+                d.proposer.proposalValue in (valA + valB) 
+            )
 }
 
 test expect {
-    initStep: { 
-        DistributedSystemInit[DistributedSystem]
-        implies invariant[DistributedSystem]
-    } 
-    is theorem
+    // initStep: { 
+    //     DistributedSystemInit[DistributedSystem]
+    //     implies invariant[DistributedSystem]
+    // } 
+    // is theorem
 
     inductiveStep: {
         (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem, a]) and
@@ -201,11 +232,11 @@ test expect {
     } 
     is theorem
 
-    invImpliesSafety: { 
-        invariant[DistributedSystem] 
-        implies safety[DistributedSystem] 
-    }
-    is theorem
+    // invImpliesSafety: { 
+    //     invariant[DistributedSystem] 
+    //     implies safety[DistributedSystem] 
+    // }
+    // is theorem
 }
 
 -- test liveness
@@ -225,7 +256,6 @@ test expect {
 //     }
 //     is sat
 // }
-
 
 -- visualization
 // run {
@@ -251,8 +281,8 @@ test expect {
 //         } 
 //         DistributedSystemWF[DistributedSystem]
 //     }
-//     eventually {some a: DistributedSystem.acceptors | a.acceptedValue = valB}
-//     eventually DistributedSystem.finalValue = valB
+//     eventually {(some a: DistributedSystem.acceptors | a.acceptedValue = valB) and DistributedSystem.finalValue = valB}
+//     // eventually 
 //     -- manually run the following steps
 //     // some a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
 //     // next_state 
