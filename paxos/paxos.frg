@@ -191,12 +191,6 @@ option core_minimization rce -- tell the solver which algorithm to use to reduce
 -- valid values: hybrid (fast, not always minimal),
 -- rce (slower, complete)
 
-
-// Only one value can be chosen 
-// Only values proposed can be chosen. 
-// If this weren't a requirement, 
-// you could construct a rather silly yet still correct consensus algorithm 
-// in which all computers instantly agree on some predefined value.
 pred safety[d: DistributedSystem] {
     # d.finalValue = 1
     d.proposer.proposalValue = valInit <=> d.finalValue = valInit
@@ -204,10 +198,6 @@ pred safety[d: DistributedSystem] {
     d.finalValue in (valA + valB) => d.proposer.proposalValue = d.finalValue
 }
 
-// all proposal identifiers are unique
-// the value of the proposal sent to a majority of computers 
-// must equal the value of the proposal with the largest identifier less than 
-// i accepted by any of the computers.
 pred invariant[d: DistributedSystem] {
     DistributedSystemWF[d]
     safety[d]
@@ -259,46 +249,46 @@ test expect {
 }
 
 -- visualization
-run {
-    DistributedSystemInit[DistributedSystem]
-    always { 
-        some step: Steps| { 
-            {
-                step = prepareStep and 
-                (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
-            }
-            or
-            {
-                step = acceptStep and 
-                accept[DistributedSystem, valB] // specifically choose valB
-            }
-            or
-            {
-                step = decideStep and 
-                decide[DistributedSystem]
-            }
-            or
-            {doNothing}
-        } 
-        DistributedSystemWF[DistributedSystem]
-    }
-    eventually {(some a: DistributedSystem.acceptors | a.acceptedValue = valB) and DistributedSystem.finalValue = valB}
-    
-    -- manually run the following steps
-    // some a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
-    // next_state 
-    // {
-    //     accept[DistributedSystem, valB]
-    //     and {
-    //         next_state 
-    //         {
-    //             decide[DistributedSystem]
-    //             and {
-    //                 next_state {
-    //                     doNothing
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-}  
+// run {
+//     DistributedSystemInit[DistributedSystem]
+//     always { 
+//         some step: Steps| { 
+//             {
+//                 step = prepareStep and 
+//                 (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
+//             }
+//             or
+//             {
+//                 step = acceptStep and 
+//                 accept[DistributedSystem, valB] // specifically choose valB
+//             }
+//             or
+//             {
+//                 step = decideStep and 
+//                 decide[DistributedSystem]
+//             }
+//             or
+//             {doNothing}
+//         } 
+//         DistributedSystemWF[DistributedSystem]
+//     }
+//     eventually {(some a: DistributedSystem.acceptors | a.acceptedValue = valB) and DistributedSystem.finalValue = valB}
+
+//     -- manually run the following steps
+//     // some a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
+//     // next_state 
+//     // {
+//     //     accept[DistributedSystem, valB]
+//     //     and {
+//     //         next_state 
+//     //         {
+//     //             decide[DistributedSystem]
+//     //             and {
+//     //                 next_state {
+//     //                     doNothing
+//     //                 }
+//     //             }
+//     //         }
+//     //     }
+//     // }
+// }  
