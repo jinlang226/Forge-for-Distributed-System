@@ -155,7 +155,7 @@ pred decide[d: DistributedSystem] {
         p.count' = p.count
     }
     (Proposer.count >= 2 and d.proposer.proposalValue in (valA + valB)) 
-        => d.finalValue' in (valA + valB) 
+        => d.finalValue' = d.proposer.proposalValue 
         else d.finalValue = d.finalValue'
 }
 
@@ -178,11 +178,10 @@ pred anyTransition[d: DistributedSystem] {
     or
     accept[d, (valA + valB)]
     or
-    // decide[d]
-    // or
+    decide[d]
+    or
     doNothing
 }
-
 
 option max_tracelength 20
 option solver MiniSatProver -- the only solver we support that extracts cores
@@ -260,46 +259,46 @@ test expect {
 }
 
 -- visualization
-// run {
-//     DistributedSystemInit[DistributedSystem]
-//     always { 
-//         some step: Steps| { 
-//             {
-//                 step = prepareStep and 
-//                 (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
-//             }
-//             or
-//             {
-//                 step = acceptStep and 
-//                 accept[DistributedSystem, valB]
-//             }
-//             or
-//             {
-//                 step = decideStep and 
-//                 decide[DistributedSystem]
-//             }
-//             or
-//             {doNothing}
-//         } 
-//         DistributedSystemWF[DistributedSystem]
-//     }
-//     eventually {(some a: DistributedSystem.acceptors | a.acceptedValue = valB) and DistributedSystem.finalValue = valB}
-//     // eventually 
-//     -- manually run the following steps
-//     // some a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
-//     // next_state 
-//     // {
-//     //     accept[DistributedSystem, valB]
-//     //     and {
-//     //         next_state 
-//     //         {
-//     //             decide[DistributedSystem]
-//     //             and {
-//     //                 next_state {
-//     //                     doNothing
-//     //                 }
-//     //             }
-//     //         }
-//     //     }
-//     // }
-// }  
+run {
+    DistributedSystemInit[DistributedSystem]
+    always { 
+        some step: Steps| { 
+            {
+                step = prepareStep and 
+                (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
+            }
+            or
+            {
+                step = acceptStep and 
+                accept[DistributedSystem, valB] // specifically choose valB
+            }
+            or
+            {
+                step = decideStep and 
+                decide[DistributedSystem]
+            }
+            or
+            {doNothing}
+        } 
+        DistributedSystemWF[DistributedSystem]
+    }
+    eventually {(some a: DistributedSystem.acceptors | a.acceptedValue = valB) and DistributedSystem.finalValue = valB}
+    
+    -- manually run the following steps
+    // some a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
+    // next_state 
+    // {
+    //     accept[DistributedSystem, valB]
+    //     and {
+    //         next_state 
+    //         {
+    //             decide[DistributedSystem]
+    //             and {
+    //                 next_state {
+    //                     doNothing
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+}  
