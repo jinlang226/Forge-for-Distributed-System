@@ -51,6 +51,9 @@ pred DistributedSystemWF[d: DistributedSystem] {
     # Acceptor = 3 
     # d.acceptors = 3
     # d.proposer = 1
+    // d.proposer.proposalNumber >= 0
+    // d.proposer.proposalNumber <= 7
+    // all a: d.acceptors | (a.acceptedNumber >= 0 and a.acceptedNumber <= 7)
 }
 
 sig Acceptor {
@@ -88,7 +91,9 @@ pred initProposer[p: Proposer] {
 
 pred prepare[d: DistributedSystem, someAcceptor: Acceptor] {
     d.finalValue = d.finalValue'
-    d.proposer.proposalNumber' = add[d.proposer.proposalNumber, 1]
+    d.finalValue in (valA + valB)
+        => d.proposer.proposalNumber = d.proposer.proposalNumber'
+        else d.proposer.proposalNumber' = add[d.proposer.proposalNumber, 1]
     d.proposer.proposalValue' = d.proposer.proposalValue
     
     all ac: d.acceptors - someAcceptor | 
@@ -106,7 +111,7 @@ pred prepare[d: DistributedSystem, someAcceptor: Acceptor] {
             d.proposer.count' = d.proposer.count)
     someAcceptor.acceptedNumber' = someAcceptor.acceptedNumber 
     someAcceptor.acceptedValue' = someAcceptor.acceptedValue
-    someAcceptor.ready' = False
+    someAcceptor.ready' = someAcceptor.ready
 }
 
 // Phase 2. 
@@ -118,7 +123,7 @@ pred prepare[d: DistributedSystem, someAcceptor: Acceptor] {
 //     it accepts the proposal unless it has already responded to a prepare 
 //     request having a number greater than n.
 
-pred accept[d: DistributedSystem, v: Value] { //jw: how to represent a list of accepotor?
+pred accept[d: DistributedSystem, v: Value] { 
     d.finalValue' = d.finalValue
     d.proposer.proposalNumber' = d.proposer.proposalNumber
     d.proposer.proposalValue' = v
@@ -149,9 +154,9 @@ pred decide[d: DistributedSystem] {
         p.proposalValue' = p.proposalValue
         p.count' = p.count
     }
-    Proposer.count >= 2
-    d.finalValue' = valB
-    d.finalValue = valInit
+    (Proposer.count >= 2 and d.proposer.proposalValue in (valA + valB)) 
+        => d.finalValue' in (valA + valB) 
+        else d.finalValue = d.finalValue'
 }
 
 pred doNothing {
@@ -168,13 +173,13 @@ pred doNothing {
     }
 }
 
-pred anyTransition[d: DistributedSystem, a: Acceptor] {
-    prepare[d, a]
+pred anyTransition[d: DistributedSystem] {
+    (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
     or
-    accept[d, valB]
+    accept[d, (valA + valB)]
     or
-    decide[d]
-    or
+    // decide[d]
+    // or
     doNothing
 }
 
@@ -196,11 +201,8 @@ option core_minimization rce -- tell the solver which algorithm to use to reduce
 pred safety[d: DistributedSystem] {
     # d.finalValue = 1
     d.proposer.proposalValue = valInit <=> d.finalValue = valInit
-    // d.proposer.proposalValue in (valA + valB) => d.finalValue = d.proposer.proposalValue
-    d.finalValue in (valA + valB) <=> d.proposer.proposalValue in (valA + valB)
+    d.proposer.proposalValue in (valA + valB) => d.finalValue = d.proposer.proposalValue
     d.finalValue in (valA + valB) => d.proposer.proposalValue = d.finalValue
-    d.proposer.proposalNumber >= 0
-    all a: d.acceptors | a.acceptedNumber >= 0
 }
 
 // all proposal identifiers are unique
@@ -210,52 +212,52 @@ pred safety[d: DistributedSystem] {
 pred invariant[d: DistributedSystem] {
     DistributedSystemWF[d]
     safety[d]
-    all a: d.acceptors | 
+    (all a: d.acceptors | 
         a.acceptedValue in (valA + valB) => 
             (
                 a.acceptedNumber >= d.proposer.proposalNumber and
                 d.proposer.proposalValue in (valA + valB) 
-            )
+            ))
 }
 
 test expect {
-    // initStep: { 
-    //     DistributedSystemInit[DistributedSystem]
-    //     implies invariant[DistributedSystem]
-    // } 
-    // is theorem
+    initStep: { 
+        DistributedSystemInit[DistributedSystem]
+        implies invariant[DistributedSystem]
+    } 
+    is theorem
 
     inductiveStep: {
-        (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem, a]) and
+        anyTransition[DistributedSystem] and
         invariant[DistributedSystem] 
         implies next_state invariant[DistributedSystem] 
     } 
     is theorem
 
-    // invImpliesSafety: { 
-    //     invariant[DistributedSystem] 
-    //     implies safety[DistributedSystem] 
-    // }
-    // is theorem
+    invImpliesSafety: { 
+        invariant[DistributedSystem] 
+        implies safety[DistributedSystem] 
+    }
+    is theorem
 }
 
 -- test liveness
-// test expect { 
-//     liveness_check: { 
-//       -- (Fill in) start in initial state 
-//         DistributedSystemInit[DistributedSystem]
-//       -- (Fill in) `always` use a transition in every state
-//         always {
-//             (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem, a]) 
-//         }
-//         implies
-//         always {
-//             {eventually {some a: DistributedSystem.acceptors | a.acceptedValue = valB}} and
-//             {eventually DistributedSystem.finalValue = valB}
-//         }
-//     }
-//     is sat
-// }
+test expect { 
+    liveness_check: { 
+      -- (Fill in) start in initial state 
+        DistributedSystemInit[DistributedSystem]
+      -- (Fill in) `always` use a transition in every state
+        always {
+            (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem]) 
+        }
+        implies
+        always {
+            {eventually {some a: DistributedSystem.acceptors | a.acceptedValue in (valA + valB)}} and
+            {eventually DistributedSystem.finalValue in (valA + valB)}
+        }
+    }
+    is sat
+}
 
 -- visualization
 // run {
