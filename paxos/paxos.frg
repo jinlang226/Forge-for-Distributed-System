@@ -31,8 +31,6 @@ option core_minimization rce -- tell the solver which algorithm to use to reduce
 one sig DistributedSystem {
     acceptors: set Acceptor,
     proposer: one Proposer
-    // ,
-    // var finalValue: one Value
 }
 
 abstract sig Steps {}
@@ -230,15 +228,15 @@ test expect {
         invariant[DistributedSystem] 
         implies safety[DistributedSystem] 
     }
-    is sat //jw: is theorem not sat 
+    is sat //jw: `is theorem` not sat 
 }
 
 -- test liveness
 test expect { 
     liveness_check: { 
-      -- (Fill in) start in initial state 
+      -- start in initial state 
         DistributedSystemInit[DistributedSystem]
-      -- (Fill in) `always` use a transition in every state
+      -- `always` use a transition in every state
         always {
             (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem]) 
         }
