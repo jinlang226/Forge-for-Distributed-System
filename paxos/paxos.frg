@@ -1,5 +1,13 @@
 #lang forge/temporal
 
+option max_tracelength 20
+option solver MiniSatProver -- the only solver we support that extracts cores
+option logtranslation 1 -- enable translation logging
+option coregranularity 1 -- tell the solver how granular cores should be
+option core_minimization rce -- tell the solver which algorithm to use to reduce core size
+
+
+//jw: note that there is only one proposer and multiple acceptors.
 
 // Phase 1. 
 // (a) A proposer selects a proposal number n and 
@@ -31,7 +39,7 @@ abstract sig Steps {}
 one sig prepareStep, acceptStep, decideStep extends Steps {}
 
 abstract sig Value{}
-one sig valInit, valA, valB, valC, valNone extends Value {}
+one sig valInit, valA, valB, valC extends Value {}
 
 abstract sig Bool {}
 one sig True, False extends Bool {}
@@ -159,84 +167,95 @@ pred doNothing[d: DistributedSystem] {
 }
 
 pred anyTransition[d: DistributedSystem] {
-    (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
+    (one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a]))
     or
     accept[d, (valA + valB + valC)]
     or
-    doNothing
+    doNothing[DistributedSystem]
 }
 
 
-
+// Only one value can be chosen. 
+// Only values proposed can be chosen. 
 pred safety[d: DistributedSystem] {
-    // # d.finalValue = 1
-    // d.proposer.proposalValue = valInit <=> d.finalValue = valInit
-    // d.proposer.proposalValue in (valA + valB) => d.finalValue = d.proposer.proposalValue
-    // d.finalValue in (valA + valB) => d.proposer.proposalValue = d.finalValue
+    // # Proposer = # d.proposer
+    // # Proposer = 1
+    // # Acceptor = # d.acceptors
+    (all a: d.acceptors | {
+        a.acceptedValue in (valA + valB + valC) 
+    }) 
+    => 
+    (all a: d.acceptors | {
+        (d.proposer.proposalValue = a.acceptedValue)
+    }) 
 }
 
 pred invariant[d: DistributedSystem] {
-    DistributedSystemWF[d]
+    // DistributedSystemWF[d]
     safety[d]
     (all a: d.acceptors | 
-        a.acceptedValue in (valA + valB) => 
-            (
-                a.acceptedNumber >= d.proposer.proposalNumber and
-                d.proposer.proposalValue in (valA + valB) 
-            ))
+        a.acceptedValue in (valA + valB + valC) )
+        => 
+        (all a: d.acceptors | {
+            (a.acceptedNumber >= d.proposer.proposalNumber) and
+                d.proposer.proposalValue in (valA + valB + valC) 
+        }) 
+
+    (all a: d.acceptors | {
+        a.acceptedValue = valInit 
+    }) 
+    => 
+    (all a: d.acceptors | {
+        a.ready = False
+    })   
 }
 
-// test expect {
-    // initStep: { 
-    //     DistributedSystemInit[DistributedSystem]
-    //     implies invariant[DistributedSystem]
-    // } 
-    // is theorem
+test expect {
+    initStep: { 
+        DistributedSystemInit[DistributedSystem]
+        implies invariant[DistributedSystem]
+    } 
+    is sat 
 
-    // inductiveStep: {
-    //     anyTransition[DistributedSystem] and
-    //     invariant[DistributedSystem] 
-    //     implies next_state invariant[DistributedSystem] 
-    // } 
-    // is theorem
+    inductiveStep: {
+        anyTransition[DistributedSystem] and
+        invariant[DistributedSystem] 
+        implies next_state invariant[DistributedSystem] 
+    } 
+    is sat
 
-    // invImpliesSafety: { 
-    //     invariant[DistributedSystem] 
-    //     implies safety[DistributedSystem] 
-    // }
-    // is theorem
-// }
+    invImpliesSafety: { 
+        invariant[DistributedSystem] 
+        implies safety[DistributedSystem] 
+    }
+    is sat //jw: is theorem not sat 
+}
 
 -- test liveness
-// test expect { 
-//     liveness_check: { 
-//       -- (Fill in) start in initial state 
-//         DistributedSystemInit[DistributedSystem]
-//       -- (Fill in) `always` use a transition in every state
-//         always {
-//             (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem]) 
-//         }
-//         implies
-//         always {
-//             {eventually {some a: DistributedSystem.acceptors | a.acceptedValue in (valA + valB)}} and
-//             {eventually DistributedSystem.finalValue in (valA + valB)}
-//         }
-//     }
-//     is sat
-// }
+test expect { 
+    liveness_check: { 
+      -- (Fill in) start in initial state 
+        DistributedSystemInit[DistributedSystem]
+      -- (Fill in) `always` use a transition in every state
+        always {
+            (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem]) 
+        }
+        implies
+        always {
+            {eventually {some a: DistributedSystem.acceptors | a.acceptedValue in (valA + valB + valC)}} 
+        }
+    }
+    is sat
+}
 
 
-option max_tracelength 20
-option solver MiniSatProver -- the only solver we support that extracts cores
-option logtranslation 1 -- enable translation logging
-option coregranularity 1 -- tell the solver how granular cores should be
-option core_minimization rce -- tell the solver which algorithm to use to reduce core size
+
 -- valid values: hybrid (fast, not always minimal),
 -- rce (slower, complete)
 
 -- visualization
-run {
-    DistributedSystemInit[DistributedSystem]
+// run {
+//     DistributedSystemInit[DistributedSystem]
     // always { 
     //     some step: Steps| { 
     //         {
@@ -260,12 +279,12 @@ run {
     // eventually {all a: DistributedSystem.acceptors | a.acceptedValue = valB}
 
     // -- manually run the following steps
-    always {
-        # DistributedSystem.acceptors = 3
-        # DistributedSystem.proposer = 1
-        # Proposer = 1
-        # Acceptor = 3 
-    }
+    // always {
+    //     # DistributedSystem.acceptors = 3
+    //     # DistributedSystem.proposer = 1
+    //     # Proposer = 1
+    //     # Acceptor = 3 
+    // }
     // one a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
     // and next_state 
     // {
@@ -279,30 +298,30 @@ run {
     // }
 
     // proposer number < acceptor number
-    DistributedSystem.proposer.proposalNumber = 0 
-    one a: DistributedSystem.acceptors | (prepare[DistributedSystem, a] and a.acceptedNumber = 1)
-    and next_state 
-    {
-        one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a] and a.acceptedNumber = 2)
-        and {
-            next_state 
-            {
-                one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a] and a.acceptedNumber = 2)
-                // accept[DistributedSystem, valB] 
-                and {
-                    next_state 
-                    {
-                        one a: DistributedSystem.acceptors | (prepare[DistributedSystem, a])
-                        // accept[DistributedSystem, valB] 
-                        and {
-                            next_state 
-                            {
-                                accept[DistributedSystem, valB] 
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}  
+    // DistributedSystem.proposer.proposalNumber = 0 
+    // one a: DistributedSystem.acceptors | (prepare[DistributedSystem, a] and a.acceptedNumber = 1)
+    // and next_state 
+    // {
+    //     one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a] and a.acceptedNumber = 2)
+    //     and {
+    //         next_state 
+    //         {
+    //             one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a] and a.acceptedNumber = 2)
+    //             // accept[DistributedSystem, valB] 
+    //             and {
+    //                 next_state 
+    //                 {
+    //                     one a: DistributedSystem.acceptors | (prepare[DistributedSystem, a])
+    //                     // accept[DistributedSystem, valB] 
+    //                     and {
+    //                         next_state 
+    //                         {
+    //                             accept[DistributedSystem, valB] 
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+// }  
