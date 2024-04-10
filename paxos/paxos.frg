@@ -237,33 +237,35 @@ option core_minimization rce -- tell the solver which algorithm to use to reduce
 -- visualization
 run {
     DistributedSystemInit[DistributedSystem]
-    always { 
-        some step: Steps| { 
-            {
-                step = prepareStep and 
-                (one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a]))
-            }
-            or
-            {
-                step = acceptStep and 
-                accept[DistributedSystem, valB] // specifically choose valB
-            }
-            or
-            {doNothing[DistributedSystem]}
-        } 
-        DistributedSystemWF[DistributedSystem]
-        # Proposer = 1
-        # Acceptor = 3 
-        # DistributedSystem.acceptors = 3
-        # DistributedSystem.proposer = 1
-    }
-    eventually {all a: DistributedSystem.acceptors | a.acceptedValue = valB}
-
-    // -- manually run the following steps
-    // always {
+    // always { 
+    //     some step: Steps| { 
+    //         {
+    //             step = prepareStep and 
+    //             (one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a]))
+    //         }
+    //         or
+    //         {
+    //             step = acceptStep and 
+    //             accept[DistributedSystem, valB] // specifically choose valB
+    //         }
+    //         or
+    //         {doNothing[DistributedSystem]}
+    //     } 
+    //     DistributedSystemWF[DistributedSystem]
+    //     # Proposer = 1
+    //     # Acceptor = 3 
     //     # DistributedSystem.acceptors = 3
     //     # DistributedSystem.proposer = 1
     // }
+    // eventually {all a: DistributedSystem.acceptors | a.acceptedValue = valB}
+
+    // -- manually run the following steps
+    always {
+        # DistributedSystem.acceptors = 3
+        # DistributedSystem.proposer = 1
+        # Proposer = 1
+        # Acceptor = 3 
+    }
     // one a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
     // and next_state 
     // {
@@ -275,4 +277,32 @@ run {
     //             }
     //         }
     // }
+
+    // proposer number < acceptor number
+    DistributedSystem.proposer.proposalNumber = 0 
+    one a: DistributedSystem.acceptors | (prepare[DistributedSystem, a] and a.acceptedNumber = 1)
+    and next_state 
+    {
+        one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a] and a.acceptedNumber = 2)
+        and {
+            next_state 
+            {
+                one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a] and a.acceptedNumber = 2)
+                // accept[DistributedSystem, valB] 
+                and {
+                    next_state 
+                    {
+                        one a: DistributedSystem.acceptors | (prepare[DistributedSystem, a])
+                        // accept[DistributedSystem, valB] 
+                        and {
+                            next_state 
+                            {
+                                accept[DistributedSystem, valB] 
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }  
