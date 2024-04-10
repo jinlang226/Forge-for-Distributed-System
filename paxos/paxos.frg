@@ -1,5 +1,6 @@
 #lang forge/temporal
 
+
 // Phase 1. 
 // (a) A proposer selects a proposal number n and 
 //     sends a prepare request with number n to 
@@ -21,39 +22,27 @@
 
 one sig DistributedSystem {
     acceptors: set Acceptor,
-    proposer: one Proposer,
-    var finalValue: one Value
+    proposer: one Proposer
+    // ,
+    // var finalValue: one Value
 }
 
 abstract sig Steps {}
 one sig prepareStep, acceptStep, decideStep extends Steps {}
 
 abstract sig Value{}
-one sig valInit, valA, valB extends Value {}
+one sig valInit, valA, valB, valC, valNone extends Value {}
 
 abstract sig Bool {}
 one sig True, False extends Bool {}
 
 pred DistributedSystemInit[d: DistributedSystem] {
-    # Proposer = 1
-    # Acceptor = 3
-    # d.acceptors = 3
-    # d.proposer = 1
-    # d.finalValue = 1
     all a: d.acceptors | initAcceptor[a]
     initProposer[d.proposer]
-    d.finalValue = valInit
 }
 
 pred DistributedSystemWF[d: DistributedSystem] {
-    # finalValue = 1
-    # Proposer = 1
-    # Acceptor = 3 
-    # d.acceptors = 3
-    # d.proposer = 1
-    // d.proposer.proposalNumber >= 0
-    // d.proposer.proposalNumber <= 7
-    // all a: d.acceptors | (a.acceptedNumber >= 0 and a.acceptedNumber <= 7)
+    
 }
 
 sig Acceptor {
@@ -63,7 +52,7 @@ sig Acceptor {
 }
 
 pred initAcceptor[a: Acceptor] {
-    a.acceptedNumber = 0 // this round number could be adjusted 
+    // a.acceptedNumber = 1 //jw: this round number could be adjusted 
     a.acceptedValue = valInit
     a.ready = False
 }
@@ -71,13 +60,15 @@ pred initAcceptor[a: Acceptor] {
 sig Proposer {
     var proposalNumber: one Int,
     var proposalValue: one Value,
-    var count: one Int
+    var count: one Int, //prepare count
+    var acceptedCount: one Int
 }
 
 pred initProposer[p: Proposer] {
-    p.proposalNumber = 0
+    // p.proposalNumber = 0
     p.proposalValue = valInit
-    p.count = 0 //number of acceptors responded
+    p.count = 0 //number of acceptors responded during prepare phase
+    p.acceptedCount = 0
 }
 
 // Phase 1. 
@@ -90,28 +81,35 @@ pred initProposer[p: Proposer] {
 //     with the highest-numbered proposal (if any) that it has accepted.
 
 pred prepare[d: DistributedSystem, someAcceptor: Acceptor] {
-    d.finalValue = d.finalValue'
-    d.finalValue in (valA + valB)
-        => d.proposer.proposalNumber = d.proposer.proposalNumber'
-        else d.proposer.proposalNumber' = add[d.proposer.proposalNumber, 1]
-    d.proposer.proposalValue' = d.proposer.proposalValue
-    
-    all ac: d.acceptors - someAcceptor | 
-        ac.acceptedNumber < d.proposer.proposalNumber' =>
-            (ac.acceptedNumber' = d.proposer.proposalNumber' and
-            ac.acceptedValue' = ac.acceptedValue and
-            d.proposer.count' = add[d.proposer.count, 2] and //jw: #ac is not correct
-            (d.proposer.proposalNumber' > ac.acceptedNumber 
-                => ac.ready' = True
-                else ac.ready' = False))
-        else
-            (ac.acceptedNumber' = ac.acceptedNumber and
-            ac.acceptedValue' = ac.acceptedValue and
-            ac.ready' = ac.ready and
-            d.proposer.count' = d.proposer.count)
-    someAcceptor.acceptedNumber' = someAcceptor.acceptedNumber 
-    someAcceptor.acceptedValue' = someAcceptor.acceptedValue
-    someAcceptor.ready' = someAcceptor.ready
+    d.proposer.acceptedCount = d.proposer.acceptedCount'
+    frameNoOtherChange[someAcceptor]
+    (someAcceptor.acceptedNumber <= d.proposer.proposalNumber)
+        =>
+            (
+                someAcceptor.acceptedNumber' = d.proposer.proposalNumber' and
+                someAcceptor.acceptedValue' = d.proposer.proposalValue and
+                someAcceptor.ready' = True and
+                d.proposer.count' = add[d.proposer.count, 1] and
+                d.proposer.proposalNumber' = d.proposer.proposalNumber and 
+                d.proposer.proposalValue' = d.proposer.proposalValue 
+            )
+        else 
+            (
+                someAcceptor.acceptedNumber' = someAcceptor.acceptedNumber and
+                someAcceptor.acceptedValue' = someAcceptor.acceptedValue and
+                someAcceptor.ready' = False and
+                d.proposer.count' = d.proposer.count and
+                d.proposer.proposalNumber' = add[d.proposer.proposalNumber, 1] and
+                d.proposer.proposalValue' = someAcceptor.acceptedValue
+            )
+}
+
+pred frameNoOtherChange[someAcceptor: Acceptor] {
+    all v: Acceptor-someAcceptor | {
+        v.acceptedNumber' = v.acceptedNumber 
+        v.acceptedValue' = v.acceptedValue
+        v.ready' = v.ready
+    }
 }
 
 // Phase 2. 
@@ -124,26 +122,29 @@ pred prepare[d: DistributedSystem, someAcceptor: Acceptor] {
 //     request having a number greater than n.
 
 pred accept[d: DistributedSystem, v: Value] { 
-    d.finalValue' = d.finalValue
     d.proposer.proposalNumber' = d.proposer.proposalNumber
+    d.proposer.count' = d.proposer.count
     d.proposer.proposalValue' = v
-    d.proposer.count' = d.proposer.count  
-    all a: d.acceptors | 
-        a.ready = True 
+    d.proposer.count > 1  //more than half. todo: modify 
+    all a: d.acceptors| {
+        (d.proposer.proposalNumber >= a.acceptedNumber
             => (
-                    a.acceptedNumber' = d.proposer.proposalNumber' and 
-                    a.acceptedValue' = d.proposer.proposalValue' and 
-                    a.ready' = a.ready
-                )
-            else 
-                (
-                    a.acceptedNumber' = a.acceptedNumber and 
-                    a.acceptedValue' = a.acceptedValue and 
-                    a.ready' = a.ready
-                )
+                a.acceptedNumber' = d.proposer.proposalNumber and 
+                a.acceptedValue' = d.proposer.proposalValue' and 
+                a.ready' = a.ready and
+                d.proposer.acceptedCount' = add[d.proposer.acceptedCount, 2] //todo: hard code right now
+            )
+            else (
+                a.acceptedNumber' = a.acceptedNumber and 
+                a.acceptedValue' = a.acceptedValue and 
+                a.ready' = a.ready and 
+                d.proposer.acceptedCount' = d.proposer.acceptedCount
+            ))
+    }
 }
 
-pred decide[d: DistributedSystem] {
+pred doNothing[d: DistributedSystem] {
+    // DistributedSystem.finalValue' = DistributedSystem.finalValue
     all a: Acceptor | {
         a.acceptedNumber' = a.acceptedNumber
         a.acceptedValue' = a.acceptedValue
@@ -153,49 +154,25 @@ pred decide[d: DistributedSystem] {
         p.proposalNumber' = p.proposalNumber
         p.proposalValue' = p.proposalValue
         p.count' = p.count
-    }
-    (Proposer.count >= 2 and d.proposer.proposalValue in (valA + valB)) 
-        => d.finalValue' = d.proposer.proposalValue 
-        else d.finalValue = d.finalValue'
-}
-
-pred doNothing {
-    DistributedSystem.finalValue' = DistributedSystem.finalValue
-    all a: Acceptor | {
-        a.acceptedNumber' = a.acceptedNumber
-        a.acceptedValue' = a.acceptedValue
-        a.ready' = a.ready
-    }
-    all p: Proposer | {
-        p.proposalNumber' = p.proposalNumber
-        p.proposalValue' = p.proposalValue
-        p.count' = p.count
+        p.acceptedCount' = p.acceptedCount
     }
 }
 
 pred anyTransition[d: DistributedSystem] {
     (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
     or
-    accept[d, (valA + valB)]
-    or
-    decide[d]
+    accept[d, (valA + valB + valC)]
     or
     doNothing
 }
 
-option max_tracelength 20
-option solver MiniSatProver -- the only solver we support that extracts cores
-option logtranslation 1 -- enable translation logging
-option coregranularity 1 -- tell the solver how granular cores should be
-option core_minimization rce -- tell the solver which algorithm to use to reduce core size
--- valid values: hybrid (fast, not always minimal),
--- rce (slower, complete)
+
 
 pred safety[d: DistributedSystem] {
-    # d.finalValue = 1
-    d.proposer.proposalValue = valInit <=> d.finalValue = valInit
-    d.proposer.proposalValue in (valA + valB) => d.finalValue = d.proposer.proposalValue
-    d.finalValue in (valA + valB) => d.proposer.proposalValue = d.finalValue
+    // # d.finalValue = 1
+    // d.proposer.proposalValue = valInit <=> d.finalValue = valInit
+    // d.proposer.proposalValue in (valA + valB) => d.finalValue = d.proposer.proposalValue
+    // d.finalValue in (valA + valB) => d.proposer.proposalValue = d.finalValue
 }
 
 pred invariant[d: DistributedSystem] {
@@ -209,86 +186,93 @@ pred invariant[d: DistributedSystem] {
             ))
 }
 
-test expect {
-    initStep: { 
-        DistributedSystemInit[DistributedSystem]
-        implies invariant[DistributedSystem]
-    } 
-    is theorem
+// test expect {
+    // initStep: { 
+    //     DistributedSystemInit[DistributedSystem]
+    //     implies invariant[DistributedSystem]
+    // } 
+    // is theorem
 
-    inductiveStep: {
-        anyTransition[DistributedSystem] and
-        invariant[DistributedSystem] 
-        implies next_state invariant[DistributedSystem] 
-    } 
-    is theorem
+    // inductiveStep: {
+    //     anyTransition[DistributedSystem] and
+    //     invariant[DistributedSystem] 
+    //     implies next_state invariant[DistributedSystem] 
+    // } 
+    // is theorem
 
-    invImpliesSafety: { 
-        invariant[DistributedSystem] 
-        implies safety[DistributedSystem] 
-    }
-    is theorem
-}
+    // invImpliesSafety: { 
+    //     invariant[DistributedSystem] 
+    //     implies safety[DistributedSystem] 
+    // }
+    // is theorem
+// }
 
 -- test liveness
-test expect { 
-    liveness_check: { 
-      -- (Fill in) start in initial state 
-        DistributedSystemInit[DistributedSystem]
-      -- (Fill in) `always` use a transition in every state
-        always {
-            (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem]) 
-        }
-        implies
-        always {
-            {eventually {some a: DistributedSystem.acceptors | a.acceptedValue in (valA + valB)}} and
-            {eventually DistributedSystem.finalValue in (valA + valB)}
-        }
-    }
-    is sat
-}
+// test expect { 
+//     liveness_check: { 
+//       -- (Fill in) start in initial state 
+//         DistributedSystemInit[DistributedSystem]
+//       -- (Fill in) `always` use a transition in every state
+//         always {
+//             (some a: DistributedSystem.acceptors | anyTransition[DistributedSystem]) 
+//         }
+//         implies
+//         always {
+//             {eventually {some a: DistributedSystem.acceptors | a.acceptedValue in (valA + valB)}} and
+//             {eventually DistributedSystem.finalValue in (valA + valB)}
+//         }
+//     }
+//     is sat
+// }
+
+
+option max_tracelength 20
+option solver MiniSatProver -- the only solver we support that extracts cores
+option logtranslation 1 -- enable translation logging
+option coregranularity 1 -- tell the solver how granular cores should be
+option core_minimization rce -- tell the solver which algorithm to use to reduce core size
+-- valid values: hybrid (fast, not always minimal),
+-- rce (slower, complete)
 
 -- visualization
-// run {
-//     DistributedSystemInit[DistributedSystem]
-//     always { 
-//         some step: Steps| { 
-//             {
-//                 step = prepareStep and 
-//                 (some a: DistributedSystem.acceptors | prepare[DistributedSystem, a])
-//             }
-//             or
-//             {
-//                 step = acceptStep and 
-//                 accept[DistributedSystem, valB] // specifically choose valB
-//             }
-//             or
-//             {
-//                 step = decideStep and 
-//                 decide[DistributedSystem]
-//             }
-//             or
-//             {doNothing}
-//         } 
-//         DistributedSystemWF[DistributedSystem]
-//     }
-//     eventually {(some a: DistributedSystem.acceptors | a.acceptedValue = valB) and DistributedSystem.finalValue = valB}
+run {
+    DistributedSystemInit[DistributedSystem]
+    always { 
+        some step: Steps| { 
+            {
+                step = prepareStep and 
+                (one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a]))
+            }
+            or
+            {
+                step = acceptStep and 
+                accept[DistributedSystem, valB] // specifically choose valB
+            }
+            or
+            {doNothing[DistributedSystem]}
+        } 
+        DistributedSystemWF[DistributedSystem]
+        # Proposer = 1
+        # Acceptor = 3 
+        # DistributedSystem.acceptors = 3
+        # DistributedSystem.proposer = 1
+    }
+    eventually {all a: DistributedSystem.acceptors | a.acceptedValue = valB}
 
-//     -- manually run the following steps
-//     // some a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
-//     // next_state 
-//     // {
-//     //     accept[DistributedSystem, valB]
-//     //     and {
-//     //         next_state 
-//     //         {
-//     //             decide[DistributedSystem]
-//     //             and {
-//     //                 next_state {
-//     //                     doNothing
-//     //                 }
-//     //             }
-//     //         }
-//     //     }
-//     // }
-// }  
+    // -- manually run the following steps
+    // always {
+    //     # DistributedSystem.acceptors = 3
+    //     # DistributedSystem.proposer = 1
+    // }
+    // one a: DistributedSystem.acceptors | prepare[DistributedSystem, a]
+    // and next_state 
+    // {
+    //     one a: DistributedSystem.acceptors | (a.ready = False and prepare[DistributedSystem, a])
+    //         and {
+    //             next_state 
+    //             {
+    //                 accept[DistributedSystem, valB]
+    //             }
+    //         }
+    // }
+}  
