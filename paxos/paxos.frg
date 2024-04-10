@@ -133,14 +133,14 @@ pred accept[d: DistributedSystem, v: Value] {
     d.proposer.proposalNumber' = d.proposer.proposalNumber
     d.proposer.count' = d.proposer.count
     d.proposer.proposalValue' = v
-    d.proposer.count > 1  //more than half. todo: modify 
+    d.proposer.count > 1  //more than half. jw todo: modify 
     all a: d.acceptors| {
         (d.proposer.proposalNumber >= a.acceptedNumber
             => (
                 a.acceptedNumber' = d.proposer.proposalNumber and 
                 a.acceptedValue' = d.proposer.proposalValue' and 
                 a.ready' = a.ready and
-                d.proposer.acceptedCount' = add[d.proposer.acceptedCount, 2] //todo: hard code right now
+                d.proposer.acceptedCount' = add[d.proposer.acceptedCount, 2] //jw todo: hard code right now
             )
             else (
                 a.acceptedNumber' = a.acceptedNumber and 
@@ -175,24 +175,22 @@ pred anyTransition[d: DistributedSystem] {
 }
 
 
-// Only one value can be chosen. 
-// Only values proposed can be chosen. 
+-- Only one value can be chosen. 
+-- Only values proposed can be chosen. 
 pred safety[d: DistributedSystem] {
-    // # Proposer = # d.proposer
-    // # Proposer = 1
-    // # Acceptor = # d.acceptors
     (all a: d.acceptors | {
         a.acceptedValue in (valA + valB + valC) 
     }) 
     => 
-    (all a: d.acceptors | {
-        (d.proposer.proposalValue = a.acceptedValue)
-    }) 
+    ((all a: d.acceptors | (d.proposer.proposalValue = a.acceptedValue))
+    and d.proposer.proposalValue in (valA + valB + valC) )
 }
 
 pred invariant[d: DistributedSystem] {
     // DistributedSystemWF[d]
     safety[d]
+
+    -- if all acceptors have accepted a value, then the proposer has proposed that value
     (all a: d.acceptors | 
         a.acceptedValue in (valA + valB + valC) )
         => 
@@ -201,6 +199,7 @@ pred invariant[d: DistributedSystem] {
                 d.proposer.proposalValue in (valA + valB + valC) 
         }) 
 
+    -- if the acceptors have not accepted a value, then they are not ready
     (all a: d.acceptors | {
         a.acceptedValue = valInit 
     }) 
@@ -208,6 +207,9 @@ pred invariant[d: DistributedSystem] {
     (all a: d.acceptors | {
         a.ready = False
     })   
+
+    -- if the proposer has not proposed a value, then its count is less than majority
+    (d.proposer.proposalValue = valInit) => (d.proposer.count < 2) //jw todo: hard code right now
 }
 
 test expect {
