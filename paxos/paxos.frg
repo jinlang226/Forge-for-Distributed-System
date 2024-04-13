@@ -308,55 +308,71 @@ pred invariant[d: DistributedSystem] {
 -- visualization
 run {
     DistributedSystemInit[DistributedSystem]
-    // always { 
-    //     some step: Steps| { 
-    //         {
-    //             step = prepareStep and 
-    //             prepare[DistributedSystem, DistributedSystem.acceptorA, DistributedSystem.proposerA]
-    //         }
-    //         or
-    //         {
-    //             step = prepareStep and 
-    //             prepare[DistributedSystem, DistributedSystem.acceptorB, DistributedSystem.proposerA]
-    //         }
-    //         or
-    //         {
-    //             step = prepareStep and 
-    //             prepare[DistributedSystem, DistributedSystem.acceptorC, DistributedSystem.proposerA]
-    //         }
-    //         or
-    //         {
-    //             step = acceptStep and 
-    //             accept[DistributedSystem, valB, DistributedSystem.proposerA] // specifically choose valB
-    //         }
-    //         or
-    //         {doNothing[DistributedSystem]}
-    //     } 
-    //     DistributedSystemWF
-    // }
-    // eventually {all a: Acceptor | a.acceptedValue = valB}
-
-    // -- manually run the following steps
-    always {
+    always { 
+        some step: Steps| { 
+            {
+                step = prepareStep and 
+                prepare[DistributedSystem, DistributedSystem.acceptorA, DistributedSystem.proposerA]
+            }
+            or
+            {
+                step = prepareStep and 
+                prepare[DistributedSystem, DistributedSystem.acceptorB, DistributedSystem.proposerA]
+            }
+            or
+            {
+                step = prepareStep and 
+                prepare[DistributedSystem, DistributedSystem.acceptorC, DistributedSystem.proposerA]
+            }
+            or
+            {
+                step = prepareStep and 
+                prepare[DistributedSystem, DistributedSystem.acceptorA, DistributedSystem.proposerB]
+            }
+            or
+            {
+                step = prepareStep and 
+                prepare[DistributedSystem, DistributedSystem.acceptorB, DistributedSystem.proposerB]
+            }
+            or
+            {
+                step = prepareStep and 
+                prepare[DistributedSystem, DistributedSystem.acceptorC, DistributedSystem.proposerB]
+            }
+            or
+            {
+                step = acceptStep and 
+                accept[DistributedSystem, valB, DistributedSystem.proposerA] // specifically choose valB
+            }
+            or
+            {doNothing[DistributedSystem]}
+        } 
         DistributedSystemWF
     }
-    prepare[DistributedSystem, DistributedSystem.acceptorA, DistributedSystem.proposerA]
-    and next_state 
-    {
-        prepare[DistributedSystem, DistributedSystem.acceptorC, DistributedSystem.proposerB]
-        and {
-            next_state 
-            {
-                // prepare[DistributedSystem, DistributedSystem.acceptorB]
-                // and {
-                //     next_state 
-                //     {
-                        accept[DistributedSystem, valB, DistributedSystem.proposerA]
-                //     }
-                // }
-            }
-        }
-    }
+    eventually {all a: Acceptor | a.acceptedValue = valB}
+
+    // -- manually run the following steps
+    // cannot get the same result
+    // always {
+    //     DistributedSystemWF
+    // }
+    // prepare[DistributedSystem, DistributedSystem.acceptorA, DistributedSystem.proposerA]
+    // and next_state 
+    // {
+    //     prepare[DistributedSystem, DistributedSystem.acceptorC, DistributedSystem.proposerB]
+    //     and {
+    //         next_state 
+    //         {
+    //             // prepare[DistributedSystem, DistributedSystem.acceptorB]
+    //             // and {
+    //             //     next_state 
+    //             //     {
+    //                     accept[DistributedSystem, valB, DistributedSystem.proposerA]
+    //             //     }
+    //             // }
+    //         }
+    //     }
+    // }
 
     // proposer number < acceptor number
     // DistributedSystem.proposer.proposalNumber = 0 
